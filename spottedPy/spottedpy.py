@@ -243,10 +243,13 @@ def calculateDistancesHelper(batch_adata,primary_variables, comparison_variables
             comparison_points = batch_adata[batch_adata.obs[comparison_var].notnull()].obs[['array_row', 'array_col']]
             # Calculate the distance matrix between the primary and comparison points
             dist_matrix = distance_matrix(primary_points, comparison_points)
+
             # Check if the distance matrix is empty
             if dist_matrix.size > 0:
                 # Calculate the minimum distance for each primary point to the comparison points
                 min_distances = np.amin(dist_matrix, axis=1)
+
+                
                 # Create a DataFrame to store the results
                 temp_df = pd.DataFrame({
                     'min_distance': min_distances,
@@ -260,14 +263,15 @@ def calculateDistancesHelper(batch_adata,primary_variables, comparison_variables
                 # Print a warning message if the distance matrix is empty
                 print(f"Warning: Empty distance matrix for batch = {batch}, primary_var = {primary_var}, comparison_var = {comparison_var}")
                 #if slide_distances.size > 0 then there are primary points, so add max_distance_of_slide to distances_per_batch
-                if slide_distances.size > 0:
-                    #if primary variables exist, and no comparison value for that variable, make distance max length of slide                 
-                    temp_df = pd.DataFrame({'min_distance': [max_distance_of_slide] * len(primary_points),
-                                            'primary_variable': [primary_var] * len(primary_points),
-                                            'comparison_variable': [comparison_var] * len(primary_points),
-                                            'batch': [batch] * len(primary_points)})
-                    # Concatenate the results DataFrame with the overall DataFrame                
-                    distances_per_batch = pd.concat([distances_per_batch, temp_df]) 
+                if empty_hotspot_default_to_max_distance:
+                    if slide_distances.size > 0:
+                        #if primary variables exist, and no comparison value for that variable, make distance max length of slide                 
+                        temp_df = pd.DataFrame({'min_distance': [max_distance_of_slide] * len(primary_points),
+                                                'primary_variable': [primary_var] * len(primary_points),
+                                                'comparison_variable': [comparison_var] * len(primary_points),
+                                                'batch': [batch] * len(primary_points)})
+                        # Concatenate the results DataFrame with the overall DataFrame                
+                        distances_per_batch = pd.concat([distances_per_batch, temp_df]) 
     return distances_per_batch
 
 def calculateDistances(anndata, primary_variables, comparison_variables=None,split_by_slide_in_batch=False,empty_hotspot_default_to_max_distance=False):
@@ -617,7 +621,9 @@ def sensitivity_calcs(spatial_anndata, params):
         * 'variable_three' (str): Reference variable for distance calculation. E.g all tumour cells. Do not calculate hotspot for this.
         * 'values_to_test' (list): List of values to test for the sensitivity analysis.
         * 'file_name' (str): Name of the file to save the plot.
+        * 'variable_comparison_constant' (bool): Indicates if the comparison variable should be varied.
     Returns:
+    
     - results (dict): A dictionary containing the calculated distances.
 
     """
