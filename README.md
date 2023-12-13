@@ -1,7 +1,7 @@
 # SpottedPy
 <img src="SpottedPy_logo.png" alt="drawing" width="200"/>
 
-### UCL Genetics Institute
+### Author: Eloise Withnell, UCL Genetics Institute
 
 SpottedPy is a Python package for analysing signatures in spatial transcriptomic datasets using hotspot analysis and neighbourhood enrichment.
 
@@ -11,7 +11,11 @@ To use SpottedPy follow instructions in spottedPy_tutorial_simple.ipynb.
 
 ### Package pre-requisites
 
-Download scanpy, libpysal, esda
+Download scanpy, libpysal, esda.
+
+### Data
+
+Download sample breast cancer spatial transcriptomics data at this [Zenodo repository](https://doi.org/10.5281/zenodo.10371890).
 
 ## Contributing
 
