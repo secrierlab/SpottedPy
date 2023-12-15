@@ -24,7 +24,7 @@ Download scanpy, libpysal, esda.
 
 ### Data
 
-Download sample breast cancer spatial transcriptomics data at this [Zenodo repository](https://doi.org/10.5281/zenodo.10392317).
+Download sample breast cancer spatial transcriptomics data at this [Zenodo repository](https://doi.org/10.5281/zenodo.10392317). anndata_one_slide_tutorial.h5ad contains a smaller anndata object to be run using spottedpy_tutorial_sample_dataset.ipynb tutorial. 
 
 ## Contributing
 
