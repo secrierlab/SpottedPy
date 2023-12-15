@@ -24,7 +24,7 @@ Download scanpy, libpysal, esda.
 
 ### Data
 
-Download sample breast cancer spatial transcriptomics data at this [Zenodo repository](https://doi.org/10.5281/zenodo.10371890).
+Download sample breast cancer spatial transcriptomics data at this [Zenodo repository](https://doi.org/10.5281/zenodo.10371890](https://doi.org/10.5281/zenodo.10392317).
 
 ## Contributing
 
