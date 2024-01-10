@@ -77,16 +77,49 @@ def calculate_mean_scores(adata, signatures, states_to_loop_through):
             mean_scores[state][signature] = scores.mean()
     return mean_scores, data_dict
 
+def calculate_mean_scores_per_batch(adata, signatures, states_to_loop_through):
+    mean_scores = {}
+    data_dict = {}
+    unique_batches = adata.obs['batch'].unique()
+
+    for batch in unique_batches:
+        mean_scores[batch] = {}
+        batch_data = adata[adata.obs['batch'] == batch]
+
+        for state in states_to_loop_through:
+            mean_scores[batch][state] = {}
+            for signature in signatures:
+                scores = batch_data.obs.loc[batch_data.obs[state].notna(), signature]
+                data_dict[(batch, state, signature)] = scores
+                mean_scores[batch][state][signature] = scores.mean()
+    return mean_scores, data_dict
+
 # Create a DataFrame for heatmap with states as rows and signatures as columns; helper function
 def create_heatmap_data(mean_scores, states_to_loop_through, signatures):
     data_for_heatmap = pd.DataFrame(index=states_to_loop_through, columns=signatures)
     for state in states_to_loop_through:
         for signature in signatures:
             data_for_heatmap.loc[state, signature] = mean_scores[state][signature]
-    
     # Convert values to numeric
     data_for_heatmap = data_for_heatmap.apply(pd.to_numeric, errors='coerce')
-    
+    return data_for_heatmap
+
+def create_heatmap_data_per_batch(mean_scores, states_to_loop_through, signatures):
+    # Prepare a list to hold all rows of the DataFrame
+    rows = []
+    # Iterate over each batch, state, and signature to populate the rows list
+    for batch, states in mean_scores.items():
+        for state in states_to_loop_through:
+            row = {'Batch': batch, 'State': state}
+            for signature in signatures:
+                row[signature] = states.get(state, {}).get(signature, None)
+            rows.append(row)
+    # Create a DataFrame from the rows
+    data_for_heatmap = pd.DataFrame(rows)
+    # Set index to Batch and State
+    data_for_heatmap.set_index(['Batch', 'State'], inplace=True)
+    # Convert values to numeric, ignoring errors
+    data_for_heatmap = data_for_heatmap.apply(pd.to_numeric, errors='coerce')
     return data_for_heatmap
 
 # Normalize the data for heatmap; helper function; helper function
@@ -95,18 +128,33 @@ def normalize_heatmap_data(data_for_heatmap):
     data_for_heatmap_normalized = data_for_heatmap_normalized.divide(data_for_heatmap_normalized.max(axis=0), axis=1)
     return data_for_heatmap_normalized
 
-# Plot heatmap using Seaborn; helper function
-def plot_heatmap(data_for_heatmap_normalized, signatures, states_to_loop_through,fig_size, plot_score=False):
+def plot_heatmap(data_for_heatmap_normalized, signatures, states_to_loop_through, fig_size, plot_score=False,save_path=None):
     fig, ax = plt.subplots(figsize=fig_size)
     cmap = sns.color_palette("coolwarm", as_cmap=True)
-    sns.heatmap(data_for_heatmap_normalized, cmap=cmap, annot=plot_score, fmt=".2f" if plot_score else None, ax=ax,
-                cbar_kws={'label': 'Normalized Mean Score'}, linewidths=1)
-    plt.yticks(rotation=0)
-    plt.xticks(rotation=45, ha="right")
-    ax.set_title('Mean Scores Heatmap')
-    rect = Rectangle((0, 0), len(signatures), len(states_to_loop_through), linewidth=1, edgecolor='black',
-                     facecolor='none')
-    ax.add_patch(rect)
+
+    # Check if the DataFrame has a MultiIndex (batch data included)
+    if isinstance(data_for_heatmap_normalized.index, pd.MultiIndex):
+        # Use the levels of the MultiIndex to adjust the plot
+        data_for_plot = data_for_heatmap_normalized.unstack(level=0)
+        sns.heatmap(data_for_plot, cmap=cmap, annot=plot_score, fmt=".2f" if plot_score else None, ax=ax,
+                    cbar_kws={'label': 'Normalized Mean Score'}, linewidths=1)
+        plt.yticks(rotation=0)
+        plt.xticks(rotation=45, ha="right")
+        ax.set_title('Mean Scores Heatmap per Batch')
+    else:
+        # Plot as usual for non-batch data
+        sns.heatmap(data_for_heatmap_normalized, cmap=cmap, annot=plot_score, fmt=".2f" if plot_score else None, ax=ax,
+                    cbar_kws={'label': 'Normalized Mean Score'}, linewidths=1)
+        plt.yticks(rotation=0)
+        plt.xticks(rotation=45, ha="right")
+        ax.set_title('Mean Scores Heatmap')
+        rect = Rectangle((0, 0), len(signatures), len(states_to_loop_through), linewidth=1, edgecolor='black',
+                         facecolor='none')
+        ax.add_patch(rect)
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+
     ax.set_aspect('equal')
     plt.show()
 

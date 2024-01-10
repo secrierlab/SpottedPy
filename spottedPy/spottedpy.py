@@ -91,7 +91,8 @@ def calculate_hotspots_with_hotspots_numbered(
     significance_level: float = 0.05,
     score_column: str = 'scores',
     neighbours_param: int = 5,
-    return_number_components: bool = False
+    return_number_components: bool = False,
+    hotspots_relative_to_batch: bool = True
 ) -> Union['AnnData', Tuple[List[int], List[int], 'AnnData']]:
     """
     Calculate hotspots with numbered hotspots.
@@ -112,8 +113,48 @@ def calculate_hotspots_with_hotspots_numbered(
     anndata_filtered.obs[score_column + "_hot"] = np.nan
     anndata_filtered.obs[score_column + "_cold"] = np.nan
 
-    for batch in anndata_filtered.obs['batch'].unique():
-        score_df = anndata_filtered[anndata_filtered.obs['batch'] == str(batch)].obs
+    #compute hotspots relative to batch
+    if hotspots_relative_to_batch:
+        for batch in anndata_filtered.obs['batch'].unique():
+            score_df = anndata_filtered[anndata_filtered.obs['batch'] == str(batch)].obs
+            score_df = score_df[~pd.isna(score_df[score_column])]
+            pp = list(zip(score_df['array_row'], score_df['array_col']))
+            kd = libpysal.cg.KDTree(np.array(pp))
+            wnn2 = libpysal.weights.KNN(kd, neighbours_param)
+            y = score_df[score_column]
+            lg = G_Local(y, wnn2, seed=100)
+            high_hotspot = score_df.loc[(lg.Zs > 0) & (lg.p_sim < significance_level)]
+            low_hotspot = score_df.loc[(lg.Zs < 0) & (lg.p_sim < significance_level)]
+            if high_hotspot.shape[0] > 1:
+                high_hotspot, n_components_high = find_connected_components(high_hotspot, anndata_filtered)
+            else:
+                n_components_high = 0
+            if low_hotspot.shape[0] > 1:
+                low_hotspot, n_components_low = find_connected_components(low_hotspot, anndata_filtered)
+            else:
+                n_components_low = 0
+            anndata_filtered.obs.loc[high_hotspot.index, score_column + "_hot"] = high_hotspot[score_column]
+            anndata_filtered.obs.loc[low_hotspot.index, score_column + "_cold"] = low_hotspot[score_column]
+            if return_number_components:
+                n_components_low_list.append(n_components_low)
+                n_components_high_list.append(n_components_high)
+    
+    #compute hotspots relative to all data: unconventional approach, but useful for treatment effect analysis etc.
+    else:
+        #ensure that each batch have unique coordinates so they do not overlap
+        unique_batches = sorted(anndata_filtered.obs['batch'].unique())
+        # Create a mapping from batch to an incrementing number
+        batch_to_prefix = {batch: i * 2 for i, batch in enumerate(unique_batches)}
+
+        # Update 'array_row' by adding the prefix based on the batch
+        anndata_filtered.obs['array_row'] = anndata_filtered.obs.apply(lambda row: str(batch_to_prefix[row['batch']]) + str(row['array_row']), axis=1)
+        anndata_filtered.obs['array_col'] = anndata_filtered.obs.apply(lambda row: str(batch_to_prefix[row['batch']]) + str(row['array_col']), axis=1)
+        #convert back to int
+        anndata_filtered.obs['array_row'] = anndata_filtered.obs['array_row'].astype(int)
+        anndata_filtered.obs['array_col'] = anndata_filtered.obs['array_col'].astype(int)
+
+
+        score_df = anndata_filtered.obs
         score_df = score_df[~pd.isna(score_df[score_column])]
         pp = list(zip(score_df['array_row'], score_df['array_col']))
         kd = libpysal.cg.KDTree(np.array(pp))
@@ -122,27 +163,20 @@ def calculate_hotspots_with_hotspots_numbered(
         lg = G_Local(y, wnn2, seed=100)
         high_hotspot = score_df.loc[(lg.Zs > 0) & (lg.p_sim < significance_level)]
         low_hotspot = score_df.loc[(lg.Zs < 0) & (lg.p_sim < significance_level)]
-
         if high_hotspot.shape[0] > 1:
             high_hotspot, n_components_high = find_connected_components(high_hotspot, anndata_filtered)
         else:
             n_components_high = 0
-
         if low_hotspot.shape[0] > 1:
             low_hotspot, n_components_low = find_connected_components(low_hotspot, anndata_filtered)
         else:
             n_components_low = 0
-
         anndata_filtered.obs.loc[high_hotspot.index, score_column + "_hot"] = high_hotspot[score_column]
         anndata_filtered.obs.loc[low_hotspot.index, score_column + "_cold"] = low_hotspot[score_column]
-
         if return_number_components:
             n_components_low_list.append(n_components_low)
             n_components_high_list.append(n_components_high)
-
-    anndata_filtered.obs[score_column + "_hot"] = anndata_filtered.obs[score_column + "_hot"]
-    anndata_filtered.obs[score_column + "_cold"] = anndata_filtered.obs[score_column + "_cold"]
-
+        
     if return_number_components:
         return n_components_low_list, n_components_high_list, anndata_filtered
     else:
@@ -156,7 +190,8 @@ def create_hotspots(
     filter_value: Optional[str] = None,
     neighbours_parameters: int = 10,
     p_value: float = 0.05,
-    number_components_return: bool = False
+    number_components_return: bool = False,
+    relative_to_batch: bool = True
 ) -> Union['AnnData', Tuple[List[int], List[int], 'AnnData']]:
     """
     Create hotspots from spatial data. AnnData obj should include batch/slide labels in .obs['batch'] column as a string. If one slide, then batch label should be the same for all spots.
@@ -169,6 +204,7 @@ def create_hotspots(
     neighbours_parameters (int): Number of neighbours to consider.
     p_value (float): Significance level for hotspots.
     number_components_return (bool): Whether to return number of components.
+    relative_to_batch (bool): Whether to calculate hotspots relative to batch if true, if false, calculate hotspots relative to all data.
 
     Returns:
     Union[AnnData, Tuple[List[int], List[int], AnnData]]: Updated AnnData object, and optionally lists of number of components.
@@ -179,13 +215,19 @@ def create_hotspots(
     else:
         anndata_filtered = anndata
 
+    if any(anndata_filtered.obs[column_name] < 0):
+        raise ValueError("Score values must be in the range 0 to 1. Ensure there are no negative values in the score column.")
+
+
+
     if number_components_return:
         n_components_low, n_components_high, anndata_filtered = calculate_hotspots_with_hotspots_numbered(
             anndata_filtered,
             significance_level=p_value,
             score_column=column_name,
             neighbours_param=neighbours_parameters,
-            return_number_components=True
+            return_number_components=True,
+            hotspots_relative_to_batch=relative_to_batch
         )
         return n_components_low, n_components_high, anndata
     else:
@@ -193,7 +235,8 @@ def create_hotspots(
             anndata_filtered,
             significance_level=p_value,
             score_column=column_name,
-            neighbours_param=neighbours_parameters
+            neighbours_param=neighbours_parameters,
+            hotspots_relative_to_batch=relative_to_batch
         )
     
     anndata.obs[column_name + "_hot"] = anndata_filtered.obs[column_name + "_hot"]
@@ -480,9 +523,10 @@ def plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_
 ######################################################################################## hotspot heatmaps #######################################################################################################################################
 
     
-def score_genes_by_batch(adata, gene_lists, gene_list_names, batch_column='batch'):
+def score_genes_by_batch(adata, gene_lists, gene_list_names):
     """
     Scores genes in batches and adds the scores to the AnnData object in .obs.
+    Returns the AnnData object and a list of the signature names in anndata object.
 
     Parameters:
     adata (AnnData): The AnnData object containing the data.
@@ -492,9 +536,9 @@ def score_genes_by_batch(adata, gene_lists, gene_list_names, batch_column='batch
     """
     signatures = [f'{name}_score' for name in gene_list_names]
 
-    unique_batches = adata.obs[batch_column].unique()
+    unique_batches = adata.obs['batch'].unique()
     for batch in unique_batches:
-        batch_data = adata[adata.obs[batch_column] == batch]
+        batch_data = adata[adata.obs['batch'] == batch]
         for i, genes in enumerate(gene_lists):
             sc.tl.score_genes(batch_data, genes, ctrl_size=200, n_bins=25,
                               score_name=signatures[i], random_state=0, copy=False, use_raw=None)
@@ -504,7 +548,8 @@ def score_genes_by_batch(adata, gene_lists, gene_list_names, batch_column='batch
 
     return adata, signatures
 
-def plot_gene_heatmap(adata, signatures, states_to_loop_through, plot_score=False, normalize_values=False,fig_size=(5, 5)):
+def plot_gene_heatmap(adata, signatures, states_to_loop_through, plot_score=False, normalize_values=False,fig_size=(5, 5),
+                      score_by_batch=False,save_path=None):
     """
     Plots a heatmap of gene signatures across different states.
     
@@ -514,20 +559,29 @@ def plot_gene_heatmap(adata, signatures, states_to_loop_through, plot_score=Fals
         states_to_loop_through (list of str): List of .obs labels names to be analyzed.
         plot_score (bool, optional): Whether to annotate the heatmap with the scores. Defaults to False.
         normalize_values (bool, optional): Whether to normalize the scores before plotting the heatmap. Defaults to False.
+        score_by_batch (bool, optional): Whether to score the signatures by batch. Defaults to False.
     """
     
     # Calculate mean scores for each state and signature.
-    mean_scores, data_dict = spl.calculate_mean_scores(adata, signatures, states_to_loop_through)
+    if score_by_batch:
+        # Calculate mean scores for each state and signature.
+        mean_scores, data_dict = spl.calculate_mean_scores_per_batch(adata, signatures, states_to_loop_through)
+        data_for_heatmap = spl.create_heatmap_data_per_batch(mean_scores, states_to_loop_through, signatures)
 
-    # Create a DataFrame for heatmap with states as rows and signatures as columns.
-    data_for_heatmap = spl.create_heatmap_data(mean_scores, states_to_loop_through, signatures)
+    else:
+         # Calculate mean scores for each state and signature within each batch.
+        mean_scores, data_dict = spl.calculate_mean_scores(adata, signatures, states_to_loop_through)
+        # Create a DataFrame for heatmap with states as rows and signatures as columns.
+        data_for_heatmap = spl.create_heatmap_data(mean_scores, states_to_loop_through, signatures)
+
+        
 
     # Normalize the data for heatmap if required.
     if normalize_values:
         data_for_heatmap = spl.normalize_heatmap_data(data_for_heatmap)
 
     # Plot the heatmap using the normalized data.
-    spl.plot_heatmap(data_for_heatmap, signatures, states_to_loop_through, fig_size,plot_score)
+    spl.plot_heatmap(data_for_heatmap, signatures, states_to_loop_through, fig_size,plot_score,save_path)
 
     return data_for_heatmap
 
@@ -546,6 +600,26 @@ def compare_gene_signatures(anndata_breast, gene_signatures, states, fig_size=(5
     plot_bubble_chart(data, states, fig_size, bubble_size)
 
 
+
+def plot_signature_boxplot(anndata_breast,hotspot_variable,signature,fig_size=(3,3)):
+    """
+    This function plots a boxplot for comparing responses to signatures based on two defined hotspots.
+
+    Parameters:
+    anndata_breast (AnnData): An AnnData object containing signatures scores in .obs column.
+    hotspot_variable (list): A list of two strings representing the hotspot column names in anndata_breast.obs. 
+    signature (str): The column name in anndata_breast.obs that contains the signature.
+    fig_size (tuple): A tuple representing the figure size. Default is (3, 3).
+    """
+    hot_data = anndata_breast.obs[~anndata_breast.obs[hotspot_variable[0]].isna()][signature]
+    cold_data = anndata_breast.obs[~anndata_breast.obs[hotspot_variable[1]].isna()][signature]
+    # Plotting
+    plt.figure(figsize=fig_size)
+    sns.boxplot(data=[hot_data, cold_data],showfliers=False)
+    plt.xticks([0, 1], [hotspot_variable[0], hotspot_variable[1]])
+    plt.title('Response to Checkpoint Genes based on EMT Hallmarks')
+    plt.ylabel('Response to Checkpoint Score')
+    plt.show()
 
 ############################################################# hotspot sensitivity #############################################################################################
 #helper function
@@ -699,7 +773,6 @@ def plot_bubble_chart_by_batch(df, primary_variable_value, comparison_variable_v
     slide_positions = {slide: idx for idx, slide in enumerate(slides)}
     # Bonferroni correction
     n_tests = len(slides)
-    print(n_tests)
     bonferroni_alpha = 0.05 / n_tests
     # Iterate through the grouped data and plot each point
     for idx, row in grouped_data.iterrows():
