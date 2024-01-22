@@ -248,26 +248,28 @@ def create_hotspots(
 def plot_hotspots(
     anndata: AnnData,
     column_name: str,
-    batch_single: Optional[str] = None
+    batch_single: Optional[str] = None,
+    save_path: Optional[str] = None
 ) -> None:
     """
-    Plots hotspots for given data.
+    Plots hotspots for given data. Library ID is the batch/slide label in .obs['batch'] column as a string.
 
     Args:
         anndata: The AnnData object containing the data.
         column_name: The name of the column containing the hotspot data.
         batch_single: Optional; if provided, only plots the hotspot for the specified batch.
+        save_path: Optional; if provided, specifies the file path where the plot will be saved. If None, the plot will not be saved.
 
     Returns:
         None
     """
     if batch_single is not None:
         data_subset = anndata[anndata.obs['batch'] == str(batch_single)]
-        sc.pl.spatial(data_subset, color=[column_name], cmap="viridis", library_id=str(batch_single))
+        sc.pl.spatial(data_subset, color=[column_name], cmap="viridis", library_id=str(batch_single),save=f"_{save_path}")
     else:
         for batch in anndata.obs['batch'].unique():
             data_subset = anndata[anndata.obs['batch'] == str(batch)]
-            sc.pl.spatial(data_subset, color=[column_name], cmap="viridis", library_id=str(batch))
+            sc.pl.spatial(data_subset, color=[column_name], cmap="viridis", library_id=str(batch),save=f"_{str(batch)}_{save_path}")
 
 def calculateDistancesHelper(batch_adata,primary_variables, comparison_variables,batch,empty_hotspot_default_to_max_distance):
     distances_per_batch = pd.DataFrame()
@@ -325,7 +327,7 @@ def calculateDistances(anndata, primary_variables, comparison_variables=None,spl
         anndata (AnnData): Annotated data matrix.
         primary_variables (list): These are variables we calculate distances from.
         comparison_variables (list, optional): These are variables we calculate distances to. If not specified, the primary variables will be used.
-        split_by_slide_in_batch (bool, optional): Whether to split the data by slide in each batch and calculate distances within these slides. Defaults to False.
+        split_by_slide_in_batch (bool, optional): Whether to split the data by slide in each batch (if multiple slides/batch) and calculate distances within these slides. Defaults to False. It we set this to true, ensure empty_hotspot_default_to_max_distance to False if there are small slides in each spot as this could bias the data.
         empty_hotspot_default_to_max_distance=if a slide does not contain any hotspots of comparison variable, default to the maximum distance
     
         Notes:
@@ -369,7 +371,7 @@ def calculateDistances(anndata, primary_variables, comparison_variables=None,spl
     return distances_df_all
 
 
-def plot_bubble_plot_mean_distances(distances_df, primary_vars, comparison_vars,normalise_by_row=False,fig_size=(5, 5),file_path_plots=None):
+def plot_bubble_plot_mean_distances(distances_df, primary_vars, comparison_vars,normalise_by_row=False,fig_size=(5, 5),save_path=None):
     """
     Plot a bubble plot of mean distances between primary and comparison variables.
     
@@ -377,7 +379,7 @@ def plot_bubble_plot_mean_distances(distances_df, primary_vars, comparison_vars,
         distances_df (pd.DataFrame): DataFrame containing the distance information from calculateDistances().
         primary_vars (list): List of primary variables to include in the plot. These are variables we calculate distances from.
         comparison_vars (list): List of comparison variables to include in the plot. These are variables we calculate distances to.
-        file_path_plots (str, optional): If provided, specifies the file path where the plot will be saved. If None, the plot will not be saved. Defaults to None.
+        save_path (str, optional): If provided, specifies the file path where the plot will be saved. If None, the plot will not be saved. Defaults to None.
     """
     # Filter the DataFrame based on the specified primary and comparison variables
     filtered_df = distances_df[
@@ -413,7 +415,7 @@ def plot_bubble_plot_mean_distances(distances_df, primary_vars, comparison_vars,
         plt.ylim(-0.5, len(comparison_vars) - 0.5)
 
         # Set plot title and labels
-        plt.title("Mean Distances of Primary Variables to Comparison Variables", fontsize=20)
+        plt.title("Mean Distances", fontsize=15)
         plt.xlabel("Primary Variable")
         plt.ylabel("Comparison Variable")
         
@@ -423,8 +425,8 @@ def plot_bubble_plot_mean_distances(distances_df, primary_vars, comparison_vars,
 
         # Adjust plot layout and show plot
         plt.tight_layout()
-        if file_path_plots is not None:
-            plt.savefig(file_path_plots, dpi=300)
+        if save_path is not None:
+            plt.savefig(save_path, dpi=300)
     
 
         plt.show()
@@ -432,7 +434,7 @@ def plot_bubble_plot_mean_distances(distances_df, primary_vars, comparison_vars,
 
 
 
-def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_vars: List[str], fig_size: tuple = (10, 5),bubble_size: tuple=(700, 700), file_path_plots: Optional[str] = None) -> None:
+def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_vars: List[str], fig_size: tuple = (10, 5),bubble_size: tuple=(700, 700), file_save: bool = False) -> None:
     """
     Plots a custom scatter plot comparing distances between two primary variables.
 
@@ -442,7 +444,7 @@ def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_
         comparison_vars (List[str]): A list of comparison variable names. These variables are used to compare against the primary variables.
         fig_size (tuple, optional): The size of the figure for the scatter plot. Defaults to (10, 5).
         bubble_size (tuple, optional): The size of the bubbles in the scatter plot. Defaults to (700, 700).
-        file_path_plots (Optional[str], optional): If provided, specifies the file path where the plot will be saved. If None, the plot will not be saved. Defaults to None.
+        file_folder (Optional[str], optional): If provided, specifies the file path where the plot will be saved. If None, the plot will not be saved. Defaults to None. 
     
     This function filters the data based on the specified primary and comparison variables, calculates mean distances, and plots these distances in a scatter plot. The plot illustrates the differences in distances between two primary variables across various comparison variables, with bubble size and color indicating statistical significance.
     """
@@ -498,8 +500,8 @@ def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_
     sns.despine()
 
     # Save the plot
-    if file_path_plots is not None:
-        plt.savefig(file_path_plots + f"/{comparison_var_one}_minus_{comparison_var_two}_scatterplot_hallmarks.pdf", dpi=300)
+    if file_save: 
+        plt.savefig(f"{comparison_var_one}_minus_{comparison_var_two}_scatterplot_hallmarks.pdf", dpi=300)
     
     plt.show()
 
@@ -694,7 +696,7 @@ def sensitivity_calcs(spatial_anndata, params):
         * 'variable_one_two_is_tumour' (bool): Indicates if data should be filtered for tumor cells for 'variable_one' and 'variable_two'.
         * 'variable_three' (str): Reference variable for distance calculation. E.g all tumour cells. Do not calculate hotspot for this.
         * 'values_to_test' (list): List of values to test for the sensitivity analysis.
-        * 'file_name' (str): Name of the file to save the plot.
+        * 'save_path' (str): Name of the file to save the plot.
         * 'variable_comparison_constant' (bool): Indicates if the comparison variable should be varied.
     Returns:
     
@@ -739,7 +741,7 @@ def sensitivity_calcs(spatial_anndata, params):
         results["distance_variable_three"].append(paired_df['variable_three'].mean())
 
     spl.plot_sensitivity(params['values_to_test'], results, params['variable_comparison'],
-                     params['variable_one'], params['variable_two'], params['variable_three'], params['file_name'],params['sensitivity_parameter'])
+                     params['variable_one'], params['variable_two'], params['variable_three'], params['save_path'],params['sensitivity_parameter'])
 
     return results
 
@@ -749,7 +751,7 @@ def sensitivity_calcs(spatial_anndata, params):
 ################################Plot differences by batch ################################
 
 
-def plot_bubble_chart_by_batch(df, primary_variable_value, comparison_variable_values, reference_variable='tumour_cells', save_path=None, pval_cutoff=0.05, fig_size=(12,10)):
+def plot_bubble_chart_by_batch(df, primary_variable_value, comparison_variable_values, reference_variable='tumour_cells', save_path=None, pval_cutoff=0.05, fig_size=(12,10),bubble_size=20):
     """
     Plot a bubble chart showing the relationship between EMT variables and TME variables.
 
@@ -773,7 +775,7 @@ def plot_bubble_chart_by_batch(df, primary_variable_value, comparison_variable_v
     slide_positions = {slide: idx for idx, slide in enumerate(slides)}
     # Bonferroni correction
     n_tests = len(slides)
-    bonferroni_alpha = 0.05 / n_tests
+    bonferroni_alpha = pval_cutoff / n_tests
     # Iterate through the grouped data and plot each point
     for idx, row in grouped_data.iterrows():
         if row['primary_variable'] != reference_variable:
@@ -782,7 +784,7 @@ def plot_bubble_chart_by_batch(df, primary_variable_value, comparison_variable_v
             color = 'blue' if row['Difference'] > 0 else 'red'
             alpha = 1 if row['Pvalue'] < bonferroni_alpha else 0  # Transparency based on significance
             # Plot the bubble
-            ax.scatter(row['comparison_variable'], y_pos, s=abs(row['Difference'])*20, color=color, alpha=alpha, edgecolors='white', linewidth=0.3)
+            ax.scatter(row['comparison_variable'], y_pos, s=abs(row['Difference'])*bubble_size, color=color, alpha=alpha, edgecolors='white', linewidth=0.3)
     ax.set_yticks(list(slide_positions.values()))
     ax.set_yticklabels(list(slide_positions.keys()))
     labels=grouped_data['comparison_variable'].unique()
@@ -874,7 +876,7 @@ def calculate_neighbourhood_correlation(rings_range,adata_vis,neighbour_variable
 
 
 
-def correlation_heatmap_neighbourhood(results, *variables, path_to_save=None, pval_cutoff=0.05,fig_size=(5, 5)):
+def correlation_heatmap_neighbourhood(results, *variables, save_path=None, pval_cutoff=0.05,fig_size=(5, 5)):
     """
     Plot heatmap from correlation dataframes.
 
@@ -883,7 +885,7 @@ def correlation_heatmap_neighbourhood(results, *variables, path_to_save=None, pv
       and the second is a DataFrame of p-values. This is returned from hotspot.calculate_neighbourhood_correlation. 
       Select ring number to plot by filtering the dict returned from hotspot.calculate_neighbourhood_correlation.
     - variables (list of str): List of variable names to include in the heatmap.
-    - path_to_save (str, optional): Path to save the heatmap image. If None, the heatmap is not saved.
+    - save_path (str, optional): Path to save the heatmap image. If None, the heatmap is not saved.
     - pval_cutoff (float): The p-value cutoff for significance.
 
     The function plots a heatmap and optionally saves it to a file.
@@ -900,11 +902,11 @@ def correlation_heatmap_neighbourhood(results, *variables, path_to_save=None, pv
     ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
     ax.set_xticks(np.arange(sub_corr.shape[1]) + 0.5, minor=False)
     ax.set_xticklabels(sub_corr.columns, rotation=90)
-    if path_to_save:
-        plt.savefig(path_to_save, bbox_inches='tight')
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
     plt.show()
     
-def plot_correlation_shifts(ring_sensitivity_results,correlation_primary_variable,file_path,fig_size=(10, 3)):
+def plot_correlation_shifts(ring_sensitivity_results,correlation_primary_variable,save_path,fig_size=(10, 3)):
     """
     Plot the shifts in correlation over different 'ring' sizes.
 
@@ -912,7 +914,7 @@ def plot_correlation_shifts(ring_sensitivity_results,correlation_primary_variabl
     - ring_sensitivity_results (dict): A dictionary where each key is the number of rings used for neighbor calculation, and each 
       value is a tuple containing the correlation matrix and the corresponding p-values matrix for those rings.
     - correlation_primary_variable (str): The primary variable for which correlations are to be plotted.
-    - file_path (str): Path to save the plot.
+    - save_path (str): Path to save the plot.
     - fig_size (tuple, optional): The size of the figure (width, height).
 
     The function plots and saves a multi-subplot figure showing correlation shifts.
@@ -953,10 +955,10 @@ def plot_correlation_shifts(ring_sensitivity_results,correlation_primary_variabl
         for j in range(len(all_columns) % n_cols, n_cols):
             fig.delaxes(axes[n_rows - 1, j])
     plt.tight_layout()
-    plt.savefig(file_path, dpi=300, bbox_inches='tight')
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.show()
 
-def plot_overall_change(ring_sensitivity_results,correlation_primary_variable,file_path,fig_size=(10, 7)):
+def plot_overall_change(ring_sensitivity_results,correlation_primary_variable,save_path,fig_size=(10, 7)):
     """
     Plot the overall change in correlation values across different 'ring' sizes.
 
@@ -964,7 +966,7 @@ def plot_overall_change(ring_sensitivity_results,correlation_primary_variable,fi
     - ring_sensitivity_results (dict): A dictionary where keys are the number of rings and values are DataFrames 
       containing correlation data for those rings.
     - correlation_primary_variable (str): The primary variable for which the overall change in correlation is to be plotted.
-    - file_path (str): Path to save the plot.
+    - save_path (str): Path to save the plot.
     - fig_size (tuple, optional): The size (width, height) of the figure.
 
     The function creates a bar plot showing the difference in correlation values for the primary variable across 
@@ -997,7 +999,7 @@ def plot_overall_change(ring_sensitivity_results,correlation_primary_variable,fi
     ax.set_title(f'Difference in Correlation Values when varying ring size for {correlation_primary_variable}')
     ax.tick_params(axis='x', rotation=90, labelsize=12)  # Rotate x-axis labels by 45 degrees & increase font size
     plt.tight_layout()
-    plt.savefig(file_path, dpi=300, bbox_inches='tight')
+    plt.savefig(save_path, dpi=300, bbox_inches='tight')
     plt.show()
 
 
