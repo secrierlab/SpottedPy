@@ -249,13 +249,15 @@ def plot_hotspots(
     anndata: AnnData,
     column_name: str,
     batch_single: Optional[str] = None,
-    save_path: Optional[str] = None
+    save_path: Optional[str] = None,
+    color_for_spots: str = 'Reds_r'
 ) -> None:
     """
     Plots hotspots for given data. Library ID is the batch/slide label in .obs['batch'] column as a string.
 
     Args:
         anndata: The AnnData object containing the data.
+        color_for_spots: The color map to use for the spots.
         column_name: The name of the column containing the hotspot data.
         batch_single: Optional; if provided, only plots the hotspot for the specified batch.
         save_path: Optional; if provided, specifies the file path where the plot will be saved. If None, the plot will not be saved.
@@ -265,11 +267,11 @@ def plot_hotspots(
     """
     if batch_single is not None:
         data_subset = anndata[anndata.obs['batch'] == str(batch_single)]
-        sc.pl.spatial(data_subset, color=[column_name], cmap="viridis", library_id=str(batch_single),save=f"_{save_path}")
+        sc.pl.spatial(data_subset, color=[column_name],  vmax='p0',color_map=color_for_spots, library_id=str(batch_single),save=f"_{save_path}",colorbar_loc=None,alpha_img= 0.5)
     else:
         for batch in anndata.obs['batch'].unique():
             data_subset = anndata[anndata.obs['batch'] == str(batch)]
-            sc.pl.spatial(data_subset, color=[column_name], cmap="viridis", library_id=str(batch),save=f"_{str(batch)}_{save_path}")
+            sc.pl.spatial(data_subset, color=[column_name],  vmax='p0',color_map=color_for_spots, library_id=str(batch),save=f"_{str(batch)}_{save_path}",colorbar_loc=None,alpha_img= 0.5)
 
 def calculateDistancesHelper(batch_adata,primary_variables, comparison_variables,batch,empty_hotspot_default_to_max_distance):
     distances_per_batch = pd.DataFrame()
