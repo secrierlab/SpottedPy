@@ -33,6 +33,7 @@ from anndata import AnnData
 from matplotlib.patches import Rectangle
 from matplotlib.patches import Patch
 import matplotlib.patches as mpatches
+from scipy.sparse import isspmatrix
 
 # Typing
 from typing import Tuple, List, Optional, Union
@@ -92,7 +93,8 @@ def calculate_hotspots_with_hotspots_numbered(
     score_column: str = 'scores',
     neighbours_param: int = 5,
     return_number_components: bool = False,
-    hotspots_relative_to_batch: bool = True
+    hotspots_relative_to_batch: bool = True,
+    add_hotspot_numbers: bool = False
 ) -> Union['AnnData', Tuple[List[int], List[int], 'AnnData']]:
     """
     Calculate hotspots with numbered hotspots.
@@ -135,6 +137,13 @@ def calculate_hotspots_with_hotspots_numbered(
                 n_components_low = 0
             anndata_filtered.obs.loc[high_hotspot.index, score_column + "_hot"] = high_hotspot[score_column]
             anndata_filtered.obs.loc[low_hotspot.index, score_column + "_cold"] = low_hotspot[score_column]
+
+            #add labels here
+            if add_hotspot_numbers:
+                anndata_filtered.obs.loc[high_hotspot.index, score_column + "_hot_number"] = high_hotspot['hotspot_label']
+                anndata_filtered.obs.loc[low_hotspot.index, score_column + "_cold_number"] = low_hotspot['hotspot_label']
+                
+            
             if return_number_components:
                 n_components_low_list.append(n_components_low)
                 n_components_high_list.append(n_components_high)
@@ -191,7 +200,8 @@ def create_hotspots(
     neighbours_parameters: int = 10,
     p_value: float = 0.05,
     number_components_return: bool = False,
-    relative_to_batch: bool = True
+    relative_to_batch: bool = True,
+    number_hotspots: bool = False
 ) -> Union['AnnData', Tuple[List[int], List[int], 'AnnData']]:
     """
     Create hotspots from spatial data. AnnData obj should include batch/slide labels in .obs['batch'] column as a string. If one slide, then batch label should be the same for all spots.
@@ -227,16 +237,27 @@ def create_hotspots(
             score_column=column_name,
             neighbours_param=neighbours_parameters,
             return_number_components=True,
-            hotspots_relative_to_batch=relative_to_batch
+            hotspots_relative_to_batch=relative_to_batch,
+            add_hotspot_numbers=number_hotspots
         )
+
+        anndata.obs[column_name + "_hot"] = anndata_filtered.obs[column_name + "_hot"]
+        anndata.obs[column_name + "_cold"] = anndata_filtered.obs[column_name + "_cold"]
+
+        if number_hotspots:
+            anndata.obs[column_name + "_hot_number"] = anndata_filtered.obs[column_name + "_hot_number"]
+            anndata.obs[column_name + "_cold_number"] = anndata_filtered.obs[column_name + "_cold_number"]
+        
         return n_components_low, n_components_high, anndata
+    
     else:
         anndata_filtered = calculate_hotspots_with_hotspots_numbered(
             anndata_filtered,
             significance_level=p_value,
             score_column=column_name,
             neighbours_param=neighbours_parameters,
-            hotspots_relative_to_batch=relative_to_batch
+            hotspots_relative_to_batch=relative_to_batch,
+            add_hotspot_numbers=number_hotspots
         )
     
     anndata.obs[column_name + "_hot"] = anndata_filtered.obs[column_name + "_hot"]
@@ -302,6 +323,7 @@ def calculateDistancesHelper(batch_adata,primary_variables, comparison_variables
                     'min_distance': min_distances,
                     'primary_variable': primary_var,
                     'comparison_variable': comparison_var,
+                    'primary_index': primary_points.index,
                     'batch': batch
                 })
                 # Concatenate the results DataFrame with the overall DataFrame
@@ -1113,3 +1135,35 @@ def calculate_corr_pvalue_for_inner_outer_neighbourhood_enrichment(results,corre
         p_val=outer_df.corr(method=lambda x, y: pearsonr(x, y)[1]) - np.eye(*corr_df.shape)
         corr_pval_results[ring] = corr_df, p_val
     return corr_pval_results
+
+
+def plot_results_gene_signatures_heatmap(adata_vis, variable_one, comparison_variable, genes, file_path_plots,gene_signature_name):
+    spl.plot_results_gene_signatures_heatmap(adata_vis, variable_one, comparison_variable, genes, file_path_plots,gene_signature_name)
+
+def plot_condition_differences(adata, variable_of_interest, conditions, save_path=None):
+    spl.plot_condition_differences(adata, variable_of_interest, conditions, save_path)
+
+
+def add_genes_to_obs(adata, gene_list):
+    """
+    Check if genes are in anndata.var_names, and if so, add their expression to anndata.obs.
+    
+    Parameters:
+    - adata: An anndata object.
+    - gene_list: A list of gene names to check and add.
+    
+    Returns:
+    - Updates the anndata object in place, no return value.
+    """
+    # Check each gene in the provided list
+    for gene in gene_list:
+        if gene in adata.var_names:
+            # Get the index of the gene in var_names
+            gene_index = adata.var_names.get_loc(gene)
+            # Extract the expression values from the .X attribute
+
+            gene_expression = adata.X[:, gene_index].toarray().flatten() if isspmatrix(adata.X) else adata.X[:, gene_index]
+            # Add to .obs with gene name as the new column name
+            adata.obs[gene] = gene_expression
+        else:
+            print(f"Gene {gene} not found in var_names.")

@@ -34,6 +34,7 @@ from anndata import AnnData
 from matplotlib.patches import Rectangle
 from matplotlib.patches import Patch
 import matplotlib.patches as mpatches
+from scipy.stats import mannwhitneyu
 
 # Typing
 from typing import Tuple, List, Optional, Union
@@ -277,9 +278,8 @@ def prepare_data_hotspot(df, primary_variable_value, comparison_variable_values,
 
 #helper function
 def format_pval_annotation(pval):
-    if pval <= 0.0001:
-        return '****'
-    elif pval <= 0.001:
+
+    if pval <= 0.001:
         return '***'
     elif pval <= 0.01:
         return '**'
@@ -287,3 +287,149 @@ def format_pval_annotation(pval):
         return '*'
     else:
         return ''
+    
+
+
+def calculate_upper_whisker(data):
+    Q1 = data.quantile(0.25)
+    Q3 = data.quantile(0.75)
+    IQR = Q3 - Q1
+    upper_bound = Q3 + 1.5 * IQR
+    return data[data <= upper_bound].max()
+
+
+
+
+def plot_condition_differences(adata, variable_of_interest, conditions, save_path=None):
+    if len(conditions) != 2:
+        raise ValueError("Exactly two conditions must be provided.")
+    
+
+    # Create a DataFrame for plotting
+    plot_data = pd.DataFrame({
+        'Batch': adata.obs['batch'],
+        variable_of_interest: adata.obs[variable_of_interest]
+    })
+    
+
+    for condition in conditions:
+        plot_data[condition] = adata.obs[condition]
+
+    # Melt the DataFrame to long format for easier plotting with seaborn
+    plot_data_melted = plot_data.melt(id_vars=['Batch', variable_of_interest], value_vars=conditions, var_name='Condition', value_name='Level')
+
+    # Filter out rows where Quiescence_Level is NaN
+    plot_data_filtered = plot_data_melted.dropna(subset=['Level'])
+
+    # Start with a larger figure size for better readability
+    plt.figure(figsize=(10, 5))
+    # Create the boxplot
+    boxplot = sns.boxplot(x='Batch', y=variable_of_interest, hue='Condition', data=plot_data_filtered, showfliers=False)
+    plt.ylabel('')
+
+    # Adjust font size for better visibility
+    plt.xticks(fontsize=12)
+    plt.yticks(fontsize=12)
+
+    # Annotation setup
+    batch_levels = plot_data_filtered['Batch'].unique()
+    condition_levels = plot_data_filtered['Condition'].unique()
+
+    # Loop through batches to calculate p-values and determine positions
+    for i, batch in enumerate(batch_levels):
+        batch_data = plot_data_filtered[plot_data_filtered['Batch'] == batch]
+        data1 = batch_data[batch_data['Condition'] == conditions[0]][variable_of_interest]
+        data2 = batch_data[batch_data['Condition'] == conditions[1]][variable_of_interest]
+
+        # Calculate whisker values for each condition
+        upper_whisker_data1 = calculate_upper_whisker(data1)
+        upper_whisker_data2 = calculate_upper_whisker(data2)
+
+        # Determine the highest point for annotation
+        max_value = max(upper_whisker_data1, upper_whisker_data2)
+        y_offset = 0.05 * max_value  # Slight offset above the max value
+
+        # Calculate p-value between conditions
+        pvalue = mannwhitneyu(data1, data2).pvalue
+        significance = format_pval_annotation(pvalue)
+
+        plt.text(i, max_value + y_offset, f'{significance}', ha='center', va='bottom', fontsize=14)
+
+    plt.title(f'{variable_of_interest} in Conditions across Batches', fontsize=16)
+    plt.legend(title='Condition', bbox_to_anchor=(1.05, 1), loc='upper left', fontsize=12)
+
+    # Adjust layout to ensure everything fits without clipping
+    plt.tight_layout()
+    
+    # Save plot if path is provided
+    if save_path:
+        plt.savefig(save_path)
+    
+    plt.show()
+
+def prepare_data(adata_vis, variable_one, comparison_variable):
+    mask_one = pd.notna(adata_vis.obs[variable_one])
+    mask_two = pd.notna(adata_vis.obs[comparison_variable])
+    return mask_one, mask_two
+
+def compute_values_for_genes(adata_vis, genes, batches, mask_one, mask_two):
+    gene_positions = {gene: idx for idx, gene in enumerate(genes)}
+    results = []
+    for batch in batches:
+        batch_mask = adata_vis.obs['batch'] == batch
+        for gene_name in genes:
+            gene_index = adata_vis.var.index.get_loc(gene_name)
+            gene_values = adata_vis.X[:, gene_index].toarray().flatten()
+            mask_combined = batch_mask & mask_one
+            difference = gene_values[mask_combined].mean() - gene_values[batch_mask & mask_two].mean()
+            _, pvalue = ttest_ind(gene_values[mask_combined], gene_values[batch_mask & mask_two])
+            results.append({'Batch': batch, 'Gene': gene_name, 'Difference': difference, 'Pvalue': pvalue})
+    return pd.DataFrame(results)
+
+#comparison_variable='tumour_cells' to compare values between
+def plot_results_gene_signatures_heatmap(adata_vis, variable_one, comparison_variable, genes, file_path_plots,gene_signature_name):
+    # Prepare data
+    batches=adata_vis.obs['batch'].unique()
+
+    mask_one, mask_two = prepare_data(adata_vis, variable_one, comparison_variable)
+    gene_positions = {gene: idx for idx, gene in enumerate(genes)}
+    # Compute values for genes
+    df_results = compute_values_for_genes(adata_vis, genes, batches, mask_one, mask_two)
+    heatmap_data = np.full((len(batches), len(genes)), np.nan)  # Initialize with NaN
+
+    for batch in batches:
+        data = df_results[df_results['Batch'] == batch]
+        for _, row in data.iterrows():
+            if row['Pvalue'] < 0.05:
+                x_pos = gene_positions[row['Gene']]
+                heatmap_data[list(batches).index(batch), x_pos] = row['Difference']
+
+    # Create colormap
+    cmap = plt.get_cmap('bwr')
+    cmap.set_bad('white')  # Set NaN color to white
+
+    # Create the heatmap
+    fig, ax = plt.subplots(figsize=(6, 7.2))
+        # Determine the maximum absolute value in your heatmap data (ignoring NaNs)
+    max_abs_value = np.nanmax(np.abs(heatmap_data))
+
+    # Create the heatmap ensuring that the colormap is symmetric around zero
+    cax = ax.imshow(heatmap_data, aspect='auto', cmap=cmap, vmin=-max_abs_value, vmax=max_abs_value)
+
+    # Labeling, etc.
+    ax.set_xticks(np.arange(len(genes)))
+    ax.set_xticklabels(genes, rotation=45, ha="right",fontsize=15)
+    ax.set_yticks(np.arange(len(batches)))
+    ax.set_yticklabels([f'{batch}' for batch in batches],fontsize=15)
+    ax.grid(False)
+
+    # Colorbar for reference
+    #cbar = plt.colorbar(cax, orientation='vertical', pad=0.01)
+    #
+    # cbar.set_label('Difference', rotation=270, labelpad=15)
+    plt.tight_layout()
+
+    path = os.path.join(file_path_plots, variable_one + "_" + comparison_variable + "_" + gene_signature_name + "_heatmap.pdf")
+    plt.savefig(path, bbox_inches='tight')
+    plt.show()
+    plt.close()
