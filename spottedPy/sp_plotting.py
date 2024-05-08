@@ -55,6 +55,8 @@ def custom_color(pvalue):
         return "#FDAE61"  # Orange
     elif pvalue < 0.05:
         return "#FEE08B"  # Yellow (Less significant)
+    elif pvalue < 0.1:
+        return "#DED9A9" # Light Green (Not significant)
     else:
         return "#E6F598"  # Light Green (Not significant)
 
@@ -242,6 +244,8 @@ def add_hotspots_to_fullanndata(spatial_anndata,hotspot_to_add,batch,old_anndata
     spatial_anndata.obs.loc[mask, new_column_name] = old_anndata.obs[new_column_name]
     new_column_name = hotspot_to_add + "_cold"
     spatial_anndata.obs.loc[mask, new_column_name] = old_anndata.obs[new_column_name]
+    #add hotspot label
+    spatial_anndata.obs.loc[mask, hotspot_to_add+"_hot_number"] = old_anndata.obs[hotspot_to_add+"_hot_number"]
     return spatial_anndata
 
 
@@ -267,7 +271,7 @@ def calculate_pvalues(df, primary_variable_value, reference_variable):
     return pvalues
 
 #helper function
-def prepare_data_hotspot(df, primary_variable_value, comparison_variable_values, reference_variable='tumour_cells'):
+def prepare_data_hotspot(df, primary_variable_value, comparison_variable_values, reference_variable):
     filtered_df = filter_dataframe(df, [primary_variable_value, reference_variable], comparison_variable_values)
     mean_df = filtered_df.groupby(['primary_variable', 'comparison_variable', 'batch']).min_distance.mean().reset_index()
     ref_values = mean_df[mean_df['primary_variable'] == reference_variable].set_index(['batch', 'comparison_variable'])['min_distance']
