@@ -56,8 +56,8 @@ def custom_color(pvalue):
     elif pvalue < 0.05:
         return "#FEE08B"  # Yellow (Less significant)
     elif pvalue < 0.1:
-        return "#DED9A9" # Light Green (Not significant)
-    else:
+        return "#DED9A9" #  (Not significant)
+    else:#pvalue > 0.1:
         return "#E6F598"  # Light Green (Not significant)
 
 def calculate_pvalue(tme_var, emt_var_one, emt_var_two, df):

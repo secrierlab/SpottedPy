@@ -466,6 +466,7 @@ def plot_bubble_plot_mean_distances(distances_df, primary_vars, comparison_vars,
         distances_df['comparison_variable'].isin(comparison_vars)
     ]
     
+
     # Group by primary and comparison variables and calculate the mean distance
     mean_df = (
         filtered_df
@@ -474,6 +475,11 @@ def plot_bubble_plot_mean_distances(distances_df, primary_vars, comparison_vars,
         .mean()
         .reset_index()
     )
+    #sort by mean distance
+    mean_df=mean_df.sort_values(by='min_distance',ascending=False)
+    #normalise by min_distance
+    if normalise_by_row:
+        mean_df['min_distance']=mean_df['min_distance']/mean_df['min_distance'].max()
 
     # Set up the figure and axes
     plt.figure(figsize=fig_size)
@@ -554,6 +560,7 @@ def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_
         if sort_by_difference:
             pivot_df = pivot_df.reindex(pivot_df['difference'].abs().sort_values(ascending=False).index)
         else:
+            #make comparison_variable a categorical variable
             pivot_df['comparison_variable'] = pd.Categorical(pivot_df['comparison_variable'], categories=comparison_vars, ordered=True)
             pivot_df.sort_values(by='comparison_variable', inplace=True)
 
@@ -580,7 +587,7 @@ def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_
             model_formula = f"min_distance ~ C(primary_variable, Treatment(reference='{comparison_var_two}'))"
             model = smf.gee(
                 model_formula,
-                "batch",  # C(batch) treats 'batch' as a categorical variable  # This remains as the clustering/grouping variable
+                "batch",  
                 data=min_distances,
                 family=sm.families.Gaussian()
             )
@@ -597,7 +604,15 @@ def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_
             }, ignore_index=True)
             #calcluate color
             results_df['color'] = results_df['p_value'].apply(spl.custom_color)
-                #sort by coefficient
+
+        if sort_by_difference:
+            pivot_df=results_df.reindex(results_df['difference'].abs().sort_values(ascending=False).index)
+        else: 
+            results_df['comparison_variable'] = pd.Categorical(results_df['comparison_variable'], categories=comparison_vars, ordered=True)
+            # Sort by the column
+            results_df.sort_values(by='comparison_variable', inplace=True)
+            pivot_df=results_df
+            #sort by coefficient
 
     #Kolmogorov-Smirnov Test to analyse how different the distance distributions are, but note: this doesnt compare at the hotspot level
     if compare_distribution_metric=="ks_test":
@@ -636,13 +651,13 @@ def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_
             # Calculate color based on p-value
         results_df['color'] = results_df['p_value'].apply(spl.custom_color)  # Assuming spl.custom_color is defined 
 
-    if sort_by_difference:
-        pivot_df=results_df.reindex(results_df['difference'].abs().sort_values(ascending=False).index)
-    else: 
-        results_df['comparison_variable'] = pd.Categorical(results_df['comparison_variable'], categories=comp_var, ordered=True)
+        if sort_by_difference:
+            pivot_df=results_df.reindex(results_df['difference'].abs().sort_values(ascending=False).index)
+        else: 
+            results_df['comparison_variable'] = pd.Categorical(results_df['comparison_variable'], categories=comparison_vars, ordered=True)
 # Sort by the column
-        results_df.sort_values(by='comparison_variable', inplace=True)
-        pivot_df=results_df
+            results_df.sort_values(by='comparison_variable', inplace=True)
+            pivot_df=results_df
 
     # Plot the data
     # Plot the data
@@ -660,7 +675,7 @@ def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_
     legend_elements = [Line2D([0], [0], marker='o', color='w', label='p < 0.001', markersize=10, markerfacecolor='#D53E4F'),
                        Line2D([0], [0], marker='o', color='w', label='p < 0.01', markersize=10, markerfacecolor='#FDAE61'),
                        Line2D([0], [0], marker='o', color='w', label='p < 0.05', markersize=10, markerfacecolor='#FEE08B'),
-                       Line2D([0], [0], marker='o', color='w', label='p >= 0.05', markersize=10, markerfacecolor='#DED9A9'),
+                       Line2D([0], [0], marker='o', color='w', label='p < 0.1', markersize=10, markerfacecolor='#DED9A9'),
                        Line2D([0], [0], marker='o', color='w', label='p >= 0.05', markersize=10, markerfacecolor='#E6F598')]
     plt.legend(handles=legend_elements, loc='lower right')
     sns.despine()
@@ -945,7 +960,6 @@ def plot_bubble_chart_by_batch(df, primary_variable_value, comparison_variable_v
     """
     # Prepare the data for plotting
     grouped_data = spl.prepare_data_hotspot(df, primary_variable_value, comparison_variable_values,reference_variable)
-    print(grouped_data)
     fig, ax = plt.subplots(figsize=fig_size)
     slides = df['batch'].unique()
     slide_positions = {slide: idx for idx, slide in enumerate(slides)}
@@ -1101,7 +1115,9 @@ def correlation_heatmap_neighbourhood(results, *variables, save_path=None, pval_
         plt.savefig(save_path, bbox_inches='tight')
     plt.show()
     
-def plot_correlation_shifts(ring_sensitivity_results1, correlation_primary_variable, save_path, ring_sensitivity_results2=None, fig_size=(10, 3), split_by_batch=False):
+def plot_correlation_shifts(ring_sensitivity_results1, correlation_primary_variable, save_path, ring_sensitivity_results2=None,
+                            correlation_primary_variable2=None, fig_size=(10, 3), split_by_batch=False,
+                            label_one=None,label_two=None):
     """
     Plot the shifts in correlation over different 'ring' sizes for up to two different sets of results.
 
@@ -1137,13 +1153,17 @@ def plot_correlation_shifts(ring_sensitivity_results1, correlation_primary_varia
         ax = axes[row_idx, col_idx] if n_rows > 1 else axes[col_idx]
 
         # Plotting for first results set
+        if label_one is None:
+            label_one='Set 1'
         y_values1 = [ring_sensitivity_results1[key][0].loc[correlation_primary_variable, column] for key in x_values] if not split_by_batch else [ring_sensitivity_results1[key].loc[correlation_primary_variable, column] for key in x_values]
-        ax.plot(x_indices, y_values1, '-o', label='Set 1', color='blue', markersize=6, markerfacecolor='red')
+        ax.plot(x_indices, y_values1, '-o', label=label_one, color='blue', markersize=6, markerfacecolor='red')
 
         # Optionally plot second results set
         if ring_sensitivity_results2:
-            y_values2 = [ring_sensitivity_results2[key][0].loc[correlation_primary_variable, column] for key in x_values] if not split_by_batch else [ring_sensitivity_results2[key].loc[correlation_primary_variable, column] for key in x_values]
-            ax.plot(x_indices, y_values2, '-o', label='Set 2', color='green', markersize=6, markerfacecolor='yellow')
+            if label_two is None:
+                label_two='Set 2'
+            y_values2 = [ring_sensitivity_results2[key][0].loc[correlation_primary_variable2, column] for key in x_values] if not split_by_batch else [ring_sensitivity_results2[key].loc[correlation_primary_variable2, column] for key in x_values]
+            ax.plot(x_indices, y_values2, '-o', label=label_two, color='green', markersize=6, markerfacecolor='yellow')
 
         ax.set_title(column, fontsize=12)
         ax.set_xticks(x_indices)
@@ -1329,9 +1349,7 @@ def calculate_corr_pvalue_for_inner_outer_neighbourhood_enrichment(results,corre
                 corr_matrix = group.corr()
                 temp_results[name] = corr_matrix
             average_corrs = pd.concat([r for r in temp_results.values()]).groupby(level=0).median()
-            average_corrs=average_corrs[~corr_df.index.str.contains('Cancer')]
-            average_corrs=average_corrs[~corr_df.index.str.contains('Luminal')]
-            average_corrs=average_corrs[~corr_df.index.str.contains('Myoepithelial')]
+            
             corr_pval_results[ring] = average_corrs
 
             
@@ -1340,9 +1358,7 @@ def calculate_corr_pvalue_for_inner_outer_neighbourhood_enrichment(results,corre
             outer_df[f'{correlation_key_variable}_inner_values']=inner_df[correlation_key_variable]
             corr_df=outer_df.corr()
             #if index contains 'Cancer' or 'Luminal' or 'Myoepithelial' remove from corr_df
-            corr_df=corr_df[~corr_df.index.str.contains('Cancer')]
-            corr_df=corr_df[~corr_df.index.str.contains('Luminal')]
-            corr_df=corr_df[~corr_df.index.str.contains('Myoepithelial')]
+            
             corr_df=outer_df.corr()
             p_val=outer_df.corr(method=lambda x, y: pearsonr(x, y)[1]) - np.eye(*corr_df.shape)
             corr_pval_results[ring] = corr_df, p_val
@@ -1408,7 +1424,7 @@ def plot_correlation_coefficients_heatmap(correlation_dict, correlation_variable
     sns.heatmap(heatmap_data, annot=False, cmap='coolwarm', center=0)
     plt.title("Correlation Heatmap with ['0']_inner_values Across Batches")
     plt.xlabel("Variables")
-    plt.ylabel("Batches")
+    plt.ylabel("Ring sizes")
     plt.xticks(rotation=90)  # Rotate variable names for better visibility
     plt.tight_layout()  # Adjust subplots to fit into figure area.
     
