@@ -241,10 +241,11 @@ def plot_sensitivity(x_values, cell_data, variable_comparison, variable_one, var
 def add_hotspots_to_fullanndata(spatial_anndata,hotspot_to_add,batch,old_anndata):
     mask = spatial_anndata.obs['batch'] == batch
     new_column_name = hotspot_to_add + "_hot"
+    #add new_column_name to spatial_anndata as empty column
     spatial_anndata.obs.loc[mask, new_column_name] = old_anndata.obs[new_column_name]
     new_column_name = hotspot_to_add + "_cold"
     spatial_anndata.obs.loc[mask, new_column_name] = old_anndata.obs[new_column_name]
-    #add hotspot label
+   
     spatial_anndata.obs.loc[mask, hotspot_to_add+"_hot_number"] = old_anndata.obs[hotspot_to_add+"_hot_number"]
     return spatial_anndata
 
@@ -391,7 +392,7 @@ def compute_values_for_genes(adata_vis, genes, batches, mask_one, mask_two):
     return pd.DataFrame(results)
 
 #comparison_variable='tumour_cells' to compare values between
-def plot_results_gene_signatures_heatmap(adata_vis, variable_one, comparison_variable, genes, file_path_plots,gene_signature_name):
+def plot_results_gene_signatures_heatmap(adata_vis, variable_one, comparison_variable, genes, file_path_plots,gene_signature_name,fig_size):
     # Prepare data
     batches=adata_vis.obs['batch'].unique()
 
@@ -410,10 +411,11 @@ def plot_results_gene_signatures_heatmap(adata_vis, variable_one, comparison_var
 
     # Create colormap
     cmap = plt.get_cmap('bwr')
+    
     cmap.set_bad('white')  # Set NaN color to white
 
     # Create the heatmap
-    fig, ax = plt.subplots(figsize=(6, 7.2))
+    fig, ax = plt.subplots(figsize=fig_size)
         # Determine the maximum absolute value in your heatmap data (ignoring NaNs)
     max_abs_value = np.nanmax(np.abs(heatmap_data))
 
@@ -422,7 +424,7 @@ def plot_results_gene_signatures_heatmap(adata_vis, variable_one, comparison_var
 
     # Labeling, etc.
     ax.set_xticks(np.arange(len(genes)))
-    ax.set_xticklabels(genes, rotation=45, ha="right",fontsize=15)
+    ax.set_xticklabels(genes,rotation=45, ha="right",fontsize=15)
     ax.set_yticks(np.arange(len(batches)))
     ax.set_yticklabels([f'{batch}' for batch in batches],fontsize=15)
     ax.grid(False)
