@@ -16,7 +16,7 @@ SpottedPy is a Python package for analysing signatures in spatial transcriptomic
 
 ## Getting Started
 
-To use SpottedPy follow instructions in spottedPy_tutorial_simple.ipynb.
+To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tutorial walks through using SpottedPy with multiple spatial slides, highly recommended for downstream statistical analysis). spottedpy_tutorial_sample_dataset.ipynb tutorial walks through using SpottedPy with a single slide. 
 
 ### Package pre-requisites
 
