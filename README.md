@@ -18,6 +18,20 @@ SpottedPy is a Python package for analysing signatures in spatial transcriptomic
 
 To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tutorial walks through using SpottedPy with multiple spatial slides, highly recommended for downstream statistical analysis). spottedpy_tutorial_sample_dataset.ipynb tutorial walks through using SpottedPy with a single slide. 
 
+Key functions: 
+•     _sp.create_hotspots_ creates hotspots from anndata, specify in the filter_columns parameter what region within the spatial slide to calculate the hotspot from e.g. tumour cells. The neighourhood_parameter can be altered here (default=10). relative_to_batch parameter ensures hotspots are calculated across each slide, otherwise they are calculated across multiple slides. Importantly, if multiple slides are used (highly recommended for statistical power), these should be labelled using .obs[‘batch’] within the anndata object. Additionally, the library ID in the .uns data slot should be labelled with the .obs[‘batch’] value. 
+•   _ sp.plot_hotspots_ plots hotspots.
+•    _sp.calculateDistances_ calculates the Euclidean distances from a spot h in H hotspot to the hotspot of interest.  primary_variables are the hotspots we calculate distances from
+and comparison variables are the hotspots we calculate distances to.
+•    sp.plot_custom_scatter compares the spatial relationship of two hotspots e.g EMT hotspots compared to EPI hotspots. Important to choose distance metric. This can be set using compare_distance_metric as equal to min, mean or median to compare the summary statistics for each hotspot across each slide using Generalised Estimating Equations which model enables us to estimate population-average effects involving repeated measurements across multiple spatial transcriptomic slides. The model estimates the coefficient  for the transition from reference hotspots to comparison hotspot variables. Setting compare_distance_metric to None calculates the statistical significance of all distances from each hotspot.
+•    sp.calculate_tumour_perimeter: delineate the boundary of the tumour accurately by focusing on the transitional area where tumour and non-tumour spots meet.
+•    sp.sensitivity_calcs performs the sensitivity analysis to evaluate the impact of varying hotspot sizes on the spatial relationships by  incrementally adjusting the neighbourhood parameter or p-value for the Getis-Ord statistic. 
+•    sp.calculate_inner_outer_correlations (Inner outer correlation) calculated by correlating signatures across a central spot of interest and the direct neighbourhood of spots surrounding it. set rings_range to calculate how the correlation changes as you expand ring surrounding a spot. 
+•    sp.calculate_neighbourhood_correlation function correlates phenotypes with cells within a spot/spatial unit. rings_range sets the number of rings.
+•    To perform the sensitivity analysis, we increased the number of rings surrounding a spatial transcriptomic spot (setting rings_range parameter in sp.calculate_inner_outer_correlations function) to consider as spot neighbours and compared the change in correlation coefficient. 
+•    sp.correlation_heatmap_neighbourhood and sp.plot_overall_change plot the neighbourhood results.
+
+
 ### Package pre-requisites
 
 Download scanpy, libpysal, esda.
