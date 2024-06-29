@@ -35,6 +35,7 @@ from matplotlib.patches import Patch
 import matplotlib.patches as mpatches
 from scipy.sparse import isspmatrix
 from scipy import stats
+import matplotlib.colors as mcolors
 
 import statsmodels.api as sm
 import statsmodels.formula.api as smf
@@ -53,174 +54,17 @@ warnings.filterwarnings('ignore', category=UserWarning, module='libpysal')
 plt.rcParams['pdf.fonttype'] = 'truetype'    
 import joypy
 #spotterpy functions
+import hotspot_helper as hotspot_helper
 import sp_plotting as spl
+import sensitivity_analysis as sensitivity_analysis
+import tumour_perimeter as tumour_perimeter
+import neighbourhood_allinone_helper as neighbourhood_allinone_helper
+import neighbourhood_inner_outer_helper as neighbourhood_inner_outer_helper
+import neighbourhood_plotting as neighbourhood_plotting
+import access_individual_hotspots as access_individual_hotspots
 
-import matplotlib.colors as mcolors
 
 ######################################################################################## key hotspot functionality ################################################################################################################################################################################
-
-def find_connected_components(
-    hotspot: pd.DataFrame,
-    slides: AnnData
-) -> Tuple[pd.DataFrame, int]:
-    """
-    Find connected components in a spatial graph.
-
-    Parameters:
-    hotspot (pd.DataFrame): DataFrame containing hotspot data.
-    slides ('AnnData'): AnnData object containing spatial data.
-
-    Returns:
-    Tuple[pd.DataFrame, int]: Updated hotspot DataFrame and number of connected components.
-    """
-    anndata_scores_filtered_high_hotspot = slides[slides.obs.index.isin(hotspot.index)]
-    row_count = anndata_scores_filtered_high_hotspot.obs.index.shape[0]
-
-    """
-    if row_count < 2:
-        neighbour_no = 1
-    elif row_count < 21:
-        neighbour_no = row_count - 1
-    else:
-        neighbour_no = 20
-    """
-    #squidpy neighbours defaults to 7 neighbours
-    if row_count < 8:
-        neighbour_no = row_count - 1
-    else:
-        neighbour_no = 6
-    sq.gr.spatial_neighbors(anndata_scores_filtered_high_hotspot, n_rings=1, coord_type="grid", n_neighs=neighbour_no)
-    connectivity_matrix = pd.DataFrame.sparse.from_spmatrix(anndata_scores_filtered_high_hotspot.obsp['spatial_connectivities'])
-    connectivity_matrix.index = anndata_scores_filtered_high_hotspot.obs.index
-    connectivity_matrix.columns = anndata_scores_filtered_high_hotspot.obs.index
-    connectivity_matrix_sparse = scipy.sparse.csr_matrix(connectivity_matrix.values)
-    n_components, labels = connected_components(csgraph=connectivity_matrix_sparse, directed=False, return_labels=True)
-    hotspot = hotspot.copy()
-    hotspot['hotspot_label'] = labels
-    #append batch to each hotspot label
-    hotspot['hotspot_label'] = hotspot['hotspot_label'].astype(str) + "_" + hotspot['batch'].astype(str)
-    hotspot = hotspot[~hotspot['hotspot_label'].isin(hotspot['hotspot_label'].value_counts()[hotspot['hotspot_label'].value_counts() < 5].index)]
-
-    return hotspot, n_components
-
-
-def calculate_hotspots_with_hotspots_numbered(
-    anndata_filtered: AnnData,
-    significance_level: float = 0.05,
-    score_column: str = 'scores',
-    neighbours_param: int = 5,
-    return_number_components: bool = False,
-    hotspots_relative_to_batch: bool = True,
-    add_hotspot_numbers: bool = False,
-    permutation: int = 999,
-    seed_number: int = 100
-) -> Union['AnnData', Tuple[List[int], List[int], 'AnnData']]:
-    """
-    Calculate hotspots with numbered hotspots.
-
-    Parameters:
-    anndata_filtered (AnnData): Filtered AnnData object.
-    significance_level (float): Significance level for hotspots.
-    score_column (str): Column name for scores.
-    neighbours_param (int): Number of neighbours to consider.
-    return_number_components (bool): Whether to return number of components.
-
-    Returns:
-    Union[AnnData, Tuple[List[int], List[int], AnnData]]: Updated AnnData object, and optionally lists of number of components.
-    """
-    n_components_high_list = []
-    n_components_low_list = []
-    anndata_filtered=anndata_filtered.copy()
-    anndata_filtered.obs[score_column + "_hot"] = np.nan
-    anndata_filtered.obs[score_column + "_cold"] = np.nan
-    anndata_filtered.obs[score_column + "_hot_number"]=np.nan
-    anndata_filtered.obs[score_column + "_cold_number"]=np.nan
-
-    #compute hotspots relative to batch
-    if hotspots_relative_to_batch:
-        for batch in anndata_filtered.obs['batch'].unique():
-            score_df = anndata_filtered[anndata_filtered.obs['batch'] == str(batch)].obs
-            score_df = score_df[~pd.isna(score_df[score_column])]
-            pp = list(zip(score_df['array_row'], score_df['array_col']))
-            kd = libpysal.cg.KDTree(np.array(pp))
-            wnn2 = libpysal.weights.KNN(kd, neighbours_param)
-            y = score_df[score_column]
-            lg = G_Local(y, wnn2, seed=seed_number, permutations=permutation)
-            #lg = G_Local(y, wnn2, seed=200)
-
-            # strict fdr correction; removes majority of hotspots that visually are present
-            #significance_level=fdr(lg.p_sim,significance_level)
-
-            high_hotspot = score_df.loc[(lg.Zs > 0) & (lg.p_sim < significance_level)]
-            low_hotspot = score_df.loc[(lg.Zs < 0) & (lg.p_sim < significance_level)]
-            if high_hotspot.shape[0] > 1:
-                high_hotspot, n_components_high = find_connected_components(high_hotspot, anndata_filtered)
-            else:
-                n_components_high = 0
-            if low_hotspot.shape[0] > 1:
-                low_hotspot, n_components_low = find_connected_components(low_hotspot, anndata_filtered)
-            else:
-                n_components_low = 0
-
-            anndata_filtered.obs.loc[high_hotspot.index, score_column + "_hot"] = high_hotspot[score_column]
-            anndata_filtered.obs.loc[low_hotspot.index, score_column + "_cold"] = low_hotspot[score_column]
-
-            #add labels here
-            if add_hotspot_numbers:
-
-                #only add numbers if there are "hotspot_label" columns
-                if "hotspot_label" in high_hotspot.columns:
-                    anndata_filtered.obs.loc[high_hotspot.index, score_column + "_hot_number"] = high_hotspot['hotspot_label']
-                if "hotspot_label" in low_hotspot.columns:
-                    anndata_filtered.obs.loc[low_hotspot.index, score_column + "_cold_number"] = low_hotspot['hotspot_label']
-                
-            
-            if return_number_components:
-                n_components_low_list.append(n_components_low)
-                n_components_high_list.append(n_components_high)
-    
-    #compute hotspots relative to all data: unconventional approach, but useful for treatment effect analysis etc.
-    else:
-        #ensure that each batch have unique coordinates so they do not overlap
-        unique_batches = sorted(anndata_filtered.obs['batch'].unique())
-        # Create a mapping from batch to an incrementing number
-        batch_to_prefix = {batch: i * 2 for i, batch in enumerate(unique_batches)}
-
-        # Update 'array_row' by adding the prefix based on the batch
-        anndata_filtered.obs['array_row'] = anndata_filtered.obs.apply(lambda row: str(batch_to_prefix[row['batch']]) + str(row['array_row']), axis=1)
-        anndata_filtered.obs['array_col'] = anndata_filtered.obs.apply(lambda row: str(batch_to_prefix[row['batch']]) + str(row['array_col']), axis=1)
-        #convert back to int
-        anndata_filtered.obs['array_row'] = anndata_filtered.obs['array_row'].astype(int)
-        anndata_filtered.obs['array_col'] = anndata_filtered.obs['array_col'].astype(int)
-
-
-        score_df = anndata_filtered.obs
-        score_df = score_df[~pd.isna(score_df[score_column])]
-        pp = list(zip(score_df['array_row'], score_df['array_col']))
-        kd = libpysal.cg.KDTree(np.array(pp))
-        wnn2 = libpysal.weights.KNN(kd, neighbours_param)
-        y = score_df[score_column]
-        lg = G_Local(y, wnn2, seed=100)
-        high_hotspot = score_df.loc[(lg.Zs > 0) & (lg.p_sim < significance_level)]
-        low_hotspot = score_df.loc[(lg.Zs < 0) & (lg.p_sim < significance_level)]
-        if high_hotspot.shape[0] > 1:
-            high_hotspot, n_components_high = find_connected_components(high_hotspot, anndata_filtered)
-        else:
-            n_components_high = 0
-        if low_hotspot.shape[0] > 1:
-            low_hotspot, n_components_low = find_connected_components(low_hotspot, anndata_filtered)
-        else:
-            n_components_low = 0
-        anndata_filtered.obs.loc[high_hotspot.index, score_column + "_hot_"+batch] = high_hotspot[score_column]
-        anndata_filtered.obs.loc[low_hotspot.index, score_column + "_cold_"+batch] = low_hotspot[score_column]
-        if return_number_components:
-            n_components_low_list.append(n_components_low)
-            n_components_high_list.append(n_components_high)
-        
-    if return_number_components:
-        return n_components_low_list, n_components_high_list, anndata_filtered
-    else:
-        return anndata_filtered
 
 
 def create_hotspots(
@@ -232,7 +76,7 @@ def create_hotspots(
     p_value: float = 0.05,
     number_components_return: bool = False,
     relative_to_batch: bool = True,
-    number_hotspots: bool = False,
+    number_hotspots: bool = True,
     permutation: int = 999,
     seed_number: int = 100
 ) -> Union['AnnData', Tuple[List[int], List[int], 'AnnData']]:
@@ -252,81 +96,8 @@ def create_hotspots(
     Returns:
     Union[AnnData, Tuple[List[int], List[int], AnnData]]: Updated AnnData object, and optionally lists of number of components.
     """
-    anndata=anndata.copy()
-    if filter_columns is not None:
-        anndata_filtered = anndata[anndata.obs[filter_columns] == filter_value]
-    else:
-        anndata_filtered = anndata
-
-    if any(anndata_filtered.obs[column_name] < 0):
-        raise ValueError("Score values must be in the range 0 to 1. Ensure there are no negative values in the score column.")
-
-
-
-    if number_hotspots or number_components_return:
-        n_components_low, n_components_high, anndata_filtered = calculate_hotspots_with_hotspots_numbered(
-            anndata_filtered,
-            significance_level=p_value,
-            score_column=column_name,
-            neighbours_param=neighbours_parameters,
-            return_number_components=True,
-            hotspots_relative_to_batch=relative_to_batch,
-            add_hotspot_numbers=number_hotspots,
-            permutation=permutation,
-            seed_number=seed_number
-        )
-
-        #fill with nans
-        anndata.obs[column_name + "_hot"]=np.nan
-        anndata.obs[column_name + "_cold"]=np.nan
-        anndata.obs[column_name + "_hot_number"]=np.nan
-        anndata.obs[column_name + "_cold_number"]=np.nan
-
-        anndata.obs.loc[anndata_filtered.obs.index, column_name + "_hot"] = anndata_filtered.obs[column_name + "_hot"]
-        anndata.obs.loc[anndata_filtered.obs.index, column_name + "_cold"] = anndata_filtered.obs[column_name + "_cold"]
-
-        col_name=column_name + "_hot_number"
-        if col_name in anndata_filtered.obs:
-            anndata.obs.loc[anndata_filtered.obs.index, col_name] = anndata_filtered.obs[col_name]
-            anndata.obs[col_name] = anndata.obs[col_name].astype(str)
-
-            #add column_name to end of all values in anndata.obs[column_name + "_hot_number"] that are not nan
-            anndata.obs[col_name] = anndata.obs[col_name].apply(lambda x: x + "_" + column_name if x != "nan" else np.nan)
-
-        col_name=column_name + "_cold_number"
-        if col_name in anndata_filtered.obs:
-            anndata.obs.loc[anndata_filtered.obs.index, column_name + "_cold_number"] = anndata_filtered.obs[col_name]
-            anndata.obs[col_name] = anndata.obs[col_name].astype(str)
-
-            #add column_name to end of all values in anndata.obs[column_name + "_cold_number"] that are not nan
-            anndata.obs[col_name] = anndata.obs[col_name].apply(lambda x: x + "_" + column_name if x != "nan" else np.nan)
-
-
-
-    
-        if number_components_return:
-            return n_components_low, n_components_high, anndata
-        else:
-            return anndata
-    
-    else:
-        anndata_filtered = calculate_hotspots_with_hotspots_numbered(
-            anndata_filtered,
-            significance_level=p_value,
-            score_column=column_name,
-            neighbours_param=neighbours_parameters,
-            hotspots_relative_to_batch=relative_to_batch,
-            add_hotspot_numbers=number_hotspots,
-            permutation=permutation,
-            seed_number=seed_number
-        )
-        
-    
-        anndata.obs.loc[anndata_filtered.obs.index, column_name + "_hot"] = anndata_filtered.obs[column_name + "_hot"]
-        anndata.obs.loc[anndata_filtered.obs.index, column_name + "_cold"] = anndata_filtered.obs[column_name + "_cold"]
-
+    anndata=hotspot_helper.create_hotspots(anndata, column_name, filter_columns, filter_value, neighbours_parameters, p_value, number_components_return, relative_to_batch, number_hotspots, permutation, seed_number)
     return anndata
-
 
 def plot_hotspots(
     anndata: AnnData,
@@ -348,98 +119,17 @@ def plot_hotspots(
     Returns:
         None
     """
-    if batch_single is not None:
-        data_subset = anndata[anndata.obs['batch'] == str(batch_single)]
-        sc.pl.spatial(data_subset, color=[column_name],  vmax='p0',color_map=color_for_spots, library_id=str(batch_single),save=f"_{save_path}",colorbar_loc=None,alpha_img= 0.5)
-    else:
-        for batch in anndata.obs['batch'].unique():
-            data_subset = anndata[anndata.obs['batch'] == str(batch)]
-            sc.pl.spatial(data_subset, color=[column_name],  vmax='p0',color_map=color_for_spots, library_id=str(batch),save=f"_{str(batch)}_{save_path}",colorbar_loc=None,alpha_img= 0.5)
+    spl.plot_hotspots(anndata, column_name, batch_single, save_path, color_for_spots)
 
-def calculateDistancesHelper(batch_adata,primary_variables, comparison_variables,batch,empty_hotspot_default_to_max_distance,hotspot_number_bool):
-    distances_per_batch = pd.DataFrame()
-# Loop through each variable in the first set
-    for primary_var in primary_variables:
-        primary_points = batch_adata[batch_adata.obs[primary_var].notnull()].obs[['array_row', 'array_col']]
-        slide_distances = distance_matrix(primary_points, batch_adata.obs[['array_row', 'array_col']])
-        if empty_hotspot_default_to_max_distance:
-            if slide_distances.size > 0:
-                max_distances = np.amax(slide_distances, axis=1)
-                #get a scalar value for max value within min_distances
-                max_distance_of_slide=np.amax(max_distances)
-        # Loop through each variable in the second set
-        if hotspot_number_bool:
-            #remove string after "_" in primary variable
-            column_name = f"{primary_var}_number"
-            if column_name not in batch_adata.obs.columns:
-                raise ValueError(f"The column {column_name} does not exist in the data. Please run create_hotspots() for primary val with number_hotspots=True.")
-
-            hotspot_labels=batch_adata[batch_adata.obs[primary_var].notnull()].obs[column_name]
-            
-        for comparison_var in comparison_variables:
-            # Extract the points for the primary and comparison variables
-            comparison_points = batch_adata[batch_adata.obs[comparison_var].notnull()].obs[['array_row', 'array_col']]
-
-
-            # Calculate the distance matrix between the primary and comparison points
-            dist_matrix = distance_matrix(primary_points, comparison_points)
-
-            # Check if the distance matrix is empty
-            if dist_matrix.size > 0:
-                # Calculate the minimum distance for each primary point to the comparison points
-                min_distances = np.amin(dist_matrix, axis=1)
-                if hotspot_number_bool:
-                    temp_df = pd.DataFrame({
-                        'min_distance': min_distances,
-                        'primary_variable': primary_var,
-                        'comparison_variable': comparison_var,
-                        'primary_index': primary_points.index,
-                        'batch': batch,
-                        'hotspot_number': hotspot_labels.values})
-                else:
-                    # Create a DataFrame to store the results
-                    temp_df = pd.DataFrame({
-                        'min_distance': min_distances,
-                        'primary_variable': primary_var,
-                        'comparison_variable': comparison_var,
-                        'primary_index': primary_points.index,
-                        'batch': batch})
-                # Concatenate the results DataFrame with the overall DataFrame
-                distances_per_batch = pd.concat([distances_per_batch, temp_df])
-            else:
-                # Print a warning message if the distance matrix is empty
-                #if slide_distances.size > 0 then there are primary points, so add max_distance_of_slide to distances_per_batch
-                if empty_hotspot_default_to_max_distance:
-                    if slide_distances.size > 0:
-                        #print(f"Warning: Empty distance matrix for batch = {batch}, primary_var = {primary_var}, comparison_var = {comparison_var}. Therefore, no hotspots calculated in slide for {comparison_var}")
-
-                        if hotspot_number_bool:
-                            temp_df = pd.DataFrame({'min_distance': [max_distance_of_slide] * len(primary_points),
-                                                'primary_variable': [primary_var] * len(primary_points),
-                                                'comparison_variable': [comparison_var] * len(primary_points),
-                                                'primary_index': primary_points.index,
-                                                'batch': [batch] * len(primary_points),
-                                                'hotspot_number':hotspot_labels.values})
-                        else:
-                        #if primary variables exist, and no comparison value for that variable, make distance max length of slide                 
-                            temp_df = pd.DataFrame({'min_distance': [max_distance_of_slide] * len(primary_points),
-                                                    'primary_variable': [primary_var] * len(primary_points),
-                                                    'comparison_variable': [comparison_var] * len(primary_points),
-                                                    'primary_index': primary_points.index,
-                                                    'batch': [batch] * len(primary_points)})
-                        # Concatenate the results DataFrame with the overall DataFrame                
-                        distances_per_batch = pd.concat([distances_per_batch, temp_df])
-                     
-    return distances_per_batch
 
 def calculateDistances(anndata, primary_variables, comparison_variables=None,split_by_slide_in_batch=True,
-                       empty_hotspot_default_to_max_distance=True,hotspot_number=False):
+                       empty_hotspot_default_to_max_distance=True,hotspot_number=True):
     """
     Calculate the minimum distances between points specified by two sets of variables in a multi-slide dataset. Variables should be populated with np.nan for points in anndata not included in variables.
     Note: slides <30 are filtered out.
     Args:
         anndata (AnnData): Annotated data matrix.
-        primary_variables (list): These are variables we calculate distances from.
+        primary_variables (list): These are variables we calculate distances from. 
         comparison_variables (list, optional): These are variables we calculate distances to. If not specified, the primary variables will be used.
         split_by_slide_in_batch (bool, optional): Whether to split the data by slide in each batch (if multiple slides/batch) and calculate distances within these slides. Defaults to False. It we set this to true, ensure empty_hotspot_default_to_max_distance to False if there are small slides in each spot as this could bias the data.
         empty_hotspot_default_to_max_distance=if a slide does not contain any hotspots of comparison variable, default to the maximum distance
@@ -449,39 +139,7 @@ def calculateDistances(anndata, primary_variables, comparison_variables=None,spl
     Returns:
         pd.DataFrame: A DataFrame containing the minimum distances, the corresponding variables, and the batch information.
     """
-
-    if comparison_variables is None:
-        comparison_variables = primary_variables
-    
-    distances_df_all = pd.DataFrame()
-    
-    # Loop through each unique batch
-    for batch in anndata.obs['batch'].unique():
-        batch_data = anndata[anndata.obs['batch'] == batch]
-
-        if split_by_slide_in_batch:
-            #get connected components for batch
-            sq.gr.spatial_neighbors(batch_data, n_rings=1, coord_type="grid", n_neighs=6)
-            connectivity_matrix = pd.DataFrame.sparse.from_spmatrix(batch_data.obsp['spatial_connectivities'])
-            connectivity_matrix.index = batch_data.obs.index
-            connectivity_matrix.columns = batch_data.obs.index
-            connectivity_matrix_sparse = scipy.sparse.csr_matrix(connectivity_matrix.values)
-            n_components, labels = connected_components(csgraph=connectivity_matrix_sparse, directed=False, return_labels=True)
-            #hotspot = hotspot[~hotspot['hotspot_label'].isin(hotspot['hotspot_label'].value_counts()[hotspot['hotspot_label'].value_counts() < 5].index)]
-            batch_data.obs['connected_labels'] = labels
-            #loop through slides within a batch (as sometimes they are saved within one image)
-            for label in batch_data.obs['connected_labels'].unique():
-                #filter batch_data to only include label
-                batch_data_label=batch_data[batch_data.obs['connected_labels']==label]
-                #consider slide too small to calculate distances
-                if batch_data_label.shape[0]<30:
-                    continue
-                distance_df=calculateDistancesHelper(batch_data_label, primary_variables, comparison_variables,batch,empty_hotspot_default_to_max_distance,hotspot_number_bool=hotspot_number)
-                distances_df_all = pd.concat([distances_df_all, distance_df])
-        else:
-            distance_df=calculateDistancesHelper(batch_data, primary_variables, comparison_variables,batch,empty_hotspot_default_to_max_distance,hotspot_number_bool=hotspot_number)
-            distances_df_all = pd.concat([distances_df_all, distance_df])
-
+    distances_df_all=hotspot_helper.calculateDistances(anndata, primary_variables, comparison_variables,split_by_slide_in_batch,empty_hotspot_default_to_max_distance,hotspot_number)
     return distances_df_all
 
 
@@ -495,67 +153,7 @@ def plot_bubble_plot_mean_distances(distances_df, primary_vars, comparison_vars,
         comparison_vars (list): List of comparison variables to include in the plot. These are variables we calculate distances to.
         save_path (str, optional): If provided, specifies the file path where the plot will be saved. If None, the plot will not be saved. Defaults to None.
     """
-    # Filter the DataFrame based on the specified primary and comparison variables
-    filtered_df = distances_df[
-        distances_df['primary_variable'].isin(primary_vars) &
-        distances_df['comparison_variable'].isin(comparison_vars)
-    ]
-    mean_df=filtered_df.groupby(['batch','primary_variable', 'hotspot_number']).min_distance.median().reset_index()
-
-    
-
-    # Group by primary and comparison variables and calculate the mean distance
-    mean_df = (
-        filtered_df
-        .groupby(['primary_variable', 'comparison_variable'])
-        .min_distance
-        .mean()
-        .reset_index()
-    )
-    #sort by mean distance
-    mean_df=mean_df.sort_values(by='min_distance',ascending=False)
-    #normalise by min_distance
-    if normalise_by_row:
-        mean_df['min_distance']=mean_df['min_distance']/mean_df['min_distance'].max()
-
-    # Set up the figure and axes
-    plt.figure(figsize=fig_size)
-    with plt.rc_context():
-        scatter = sns.scatterplot(
-            x='primary_variable', 
-            y='comparison_variable', 
-            size='min_distance',
-            sizes=(100, 2000),
-            data=mean_df,
-            hue='min_distance',
-            palette="viridis",
-            legend=False
-        )
-        
-        # Set plot limits
-        plt.xlim(-0.5, len(primary_vars) - 0.5)
-        plt.ylim(-0.5, len(comparison_vars) - 0.5)
-
-        # Set plot title and labels
-        plt.title("Mean Distances", fontsize=15)
-        plt.xlabel("Primary Variable")
-        plt.ylabel("Comparison Variable")
-        
-        # Set x-axis tick rotation and tick label size
-        plt.xticks(rotation=45, ha='right')
-        plt.tick_params(axis='both', which='major', labelsize=15)
-
-        #add rotation to y axis
-        #plt.yticks(rotation=-45, ha='right')
-
-        # Adjust plot layout and show plot
-        plt.tight_layout()
-        if save_path is not None:
-            plt.savefig(save_path, dpi=300)
-    
-
-        plt.show()
-        plt.close()
+    spl.plot_bubble_plot_mean_distances(distances_df, primary_vars, comparison_vars,normalise_by_row,fig_size,save_path)
 
 
 
@@ -576,187 +174,13 @@ def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_
     
     This function filters the data based on the specified primary and comparison variables, calculates mean distances, and plots these distances in a scatter plot. The plot illustrates the differences in distances between two primary variables across various comparison variables, with bubble size and color indicating statistical significance.
     """
-    # Set plot style and font
-    sns.set_style("white")
-    plt.rcParams['font.family'] = 'Arial'
-    plt.rcParams['font.size'] = 10
-
-    if compare_distribution_metric is None:
-        # Filter the data
-        filtered_df = data[data['primary_variable'].isin(primary_vars)]
-        filtered_df = filtered_df[filtered_df['comparison_variable'].isin(comparison_vars)]
-        mean_df = (filtered_df.groupby(['primary_variable', 'comparison_variable'])
-                .min_distance.mean()
-                .reset_index())
-        comparison_var_one = primary_vars[0]
-        comparison_var_two = primary_vars[1]
-        filtered_df['comparison_variable'] = filtered_df['comparison_variable'].str.replace('q05cell_abundance_w_sf_', '')
-        # Calculate differences and p-values
-        pivot_df = mean_df.pivot(index='comparison_variable', columns='primary_variable', values='min_distance')
-        pivot_df['difference'] = pivot_df[comparison_var_one] - pivot_df[comparison_var_two]
-        pivot_df = pivot_df.reset_index()
-        pivot_df['p_value'] = pivot_df['comparison_variable'].apply(lambda x: spl.calculate_pvalue(x, comparison_var_one, comparison_var_two, filtered_df))
-        pivot_df['color'] = pivot_df['p_value'].apply(spl.custom_color)
-        # Sort the DataFrame
-        if sort_by_difference:
-            pivot_df = pivot_df.reindex(pivot_df['difference'].abs().sort_values(ascending=False).index)
-        else:
-            #make comparison_variable a categorical variable
-            pivot_df['comparison_variable'] = pd.Categorical(pivot_df['comparison_variable'], categories=comparison_vars, ordered=True)
-            pivot_df.sort_values(by='comparison_variable', inplace=True)
-
-    #test different metric of distance distributions.. min, median, mean
-    #df with index as comparison_variable, column as primary_variable, and dufference as coefficient and p_value as p_value and sort by coefficient
-    if compare_distribution_metric is not None and compare_distribution_metric in ['mean', 'median', 'min']:
-        results_df = pd.DataFrame(columns=['comparison_variable', 'coefficient', 'p_value'])
-
-        for comp_var in comparison_vars:
-            comparison_var_two = primary_vars[1]
-            comparison_var_one = primary_vars[0]
-            #filter for comp_var
-            distance_vals_filtered=data[data['comparison_variable']==comp_var].copy()
-
-            distance_vals_filtered.loc[:, 'batch'] = distance_vals_filtered['batch'].astype('category')
-            if compare_distribution_metric=="mean":
-                min_distances = distance_vals_filtered.groupby(['batch','primary_variable', 'hotspot_number']).min_distance.mean().reset_index()
-            if compare_distribution_metric=="median":
-                min_distances = distance_vals_filtered.groupby(['batch','primary_variable', 'hotspot_number']).min_distance.median().reset_index()
-            if compare_distribution_metric=="min":
-                min_distances = distance_vals_filtered.groupby(['batch','primary_variable', 'hotspot_number']).min_distance.min().reset_index()
-
-
-            model_formula = f"min_distance ~ C(primary_variable, Treatment(reference='{comparison_var_two}'))"
-            model = smf.gee(
-                model_formula,
-                "batch",  
-                data=min_distances,
-                family=sm.families.Gaussian()
-            )
-            result = model.fit()
-            coef_key = f'C(primary_variable, Treatment(reference=\'{comparison_var_two}\'))[T.{comparison_var_one}]'
-
-            coefficient = result.params.get(coef_key)
-            p_value = result.pvalues.get(coef_key)
-            # Append results to the DataFrame
-            new_row = pd.DataFrame([{
-                'comparison_variable': comp_var,
-                'difference': coefficient,
-                'p_value': p_value
-            }])
-            results_df = pd.concat([results_df, new_row], ignore_index=True)
-
-            #calcluate color
-            results_df['color'] = results_df['p_value'].apply(spl.custom_color)
-
-        if sort_by_difference:
-            pivot_df=results_df.reindex(results_df['difference'].abs().sort_values(ascending=False).index)
-        else: 
-            results_df['comparison_variable'] = pd.Categorical(results_df['comparison_variable'], categories=comparison_vars, ordered=True)
-            # Sort by the column
-            results_df.sort_values(by='comparison_variable', inplace=True)
-            pivot_df=results_df
-            #sort by coefficient
-
-    #Kolmogorov-Smirnov Test to analyse how different the distance distributions are, but note: this doesnt compare at the hotspot level
-    if compare_distribution_metric=="ks_test":
-        results_df = pd.DataFrame(columns=['comparison_variable', 'coefficient', 'p_value'])
-        for comp_var in comparison_vars:
-            comparison_var_two = primary_vars[1]
-            comparison_var_one = primary_vars[0]
-            # Filter data for comp_var
-            distance_vals_filtered = data[data['comparison_variable'] == comp_var]
-            distance_vals_filtered.loc[:, 'batch'] = distance_vals_filtered['batch'].astype('category')
-
-            # List to store results for combining later
-            ks_statistics = []
-            p_values = []
-            # Perform KS test for each batch and primary variable pair
-            for batch in distance_vals_filtered['batch'].cat.categories:
-                batch_data = distance_vals_filtered[distance_vals_filtered['batch'] == batch]
-                data1 = batch_data[batch_data['primary_variable'] == comparison_var_one]['min_distance']
-                data2 = batch_data[batch_data['primary_variable'] == comparison_var_two]['min_distance']
-                statistic, p_value = mannwhitneyu(data1, data2, alternative='less')
-
-
-                #ks_statistic, p_value = stats.ks_2samp(data1, data2)
-                ks_statistics.append(statistic)
-                p_values.append(p_value)
-            # Combine results across batches
-            average_ks = np.mean(ks_statistics)
-            combined_p_value = stats.combine_pvalues(p_values, method='fisher')[1]  # Using Fisher's method
-            
-            # Append results to the DataFrame
-            results_df = results_df.append({
-                'comparison_variable': comp_var,
-                'difference': average_ks,  # Using average KS as the 'difference'
-                'p_value': combined_p_value
-            }, ignore_index=True)
-            
-            # Calculate color based on p-value
-        results_df['color'] = results_df['p_value'].apply(spl.custom_color)  # Assuming spl.custom_color is defined 
-
-        if sort_by_difference:
-            pivot_df=results_df.reindex(results_df['difference'].abs().sort_values(ascending=False).index)
-        else: 
-            results_df['comparison_variable'] = pd.Categorical(results_df['comparison_variable'], categories=comparison_vars, ordered=True)
-# Sort by the column
-            results_df.sort_values(by='comparison_variable', inplace=True)
-            pivot_df=results_df
-
-    # Plot the data
-    # Plot the data
-    plt.figure(figsize=fig_size)
-    ax = sns.scatterplot(x='comparison_variable', y='difference', size=1,
-                        sizes=bubble_size, data=pivot_df, hue='color', 
-                        palette={'#D53E4F': '#D53E4F', '#FDAE61': '#FDAE61', '#FEE08B': '#FEE08B', '#E6F598': '#E6F598','#DED9A9':'#DED9A9'}, 
-                        legend=None)
-    plt.axhline(0, color='gray', linestyle='--')
-    # Add ylabel with arrows and text
-    plt.ylabel('Closer to\n{} ←→ {}'.format(comparison_var_one, comparison_var_two))
-    #plt.xticks(rotation=90)
-    plt.xticks(rotation=90, ha='right', rotation_mode='anchor')
-    #add tick marks
-    plt.tick_params(axis='x', which='both', direction='in', length=6, width=2)
-
-
-
-    
-    #plt.tight_layout()
-    # Add custom legend
-    legend_elements = [Line2D([0], [0], marker='o', color='w', label='p < 0.001', markersize=10, markerfacecolor='#D53E4F'),
-                       Line2D([0], [0], marker='o', color='w', label='p < 0.01', markersize=10, markerfacecolor='#FDAE61'),
-                       Line2D([0], [0], marker='o', color='w', label='p < 0.05', markersize=10, markerfacecolor='#FEE08B'),
-                       Line2D([0], [0], marker='o', color='w', label='p < 0.1', markersize=10, markerfacecolor='#DED9A9'),
-                       Line2D([0], [0], marker='o', color='w', label='p >= 0.05', markersize=10, markerfacecolor='#E6F598')]
-    plt.legend(handles=legend_elements, loc='lower right')
-    sns.despine()
-
-    # Save the plot
-    if file_save: 
-        plt.savefig(f"{file_save}_scatterplot_hallmarks.pdf", dpi=300)
-    
-    plt.show()
-    if statistical_test:
-        return results_df
-
+    spl.plot_custom_scatter(data, primary_vars, comparison_vars, fig_size, bubble_size, file_save,sort_by_difference, compare_distribution_metric, statistical_test)
 
 
 #for each comparison variable plot box plots of the distribution of min_distance for each primary variable
 def plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size):
-    #filter distances by primary_variable and comparison_variable
-    filtered_df = distances[
-        distances['primary_variable'].isin(primary_variables) &
-        distances['comparison_variable'].isin(comparison_variables)
-    ]
-    
-    #plot boxplot of min_distance
-    for comparison_variable in comparison_variables:
-        fig, ax = plt.subplots(figsize=fig_size)
-        sns.boxplot(data=filtered_df[filtered_df['comparison_variable'] == comparison_variable],
-                    x='primary_variable', y='min_distance', ax=ax,palette='viridis')
-        ax.set_title(comparison_variable)
-        ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
-        plt.show()
+    spl.plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size)
+
 ######################################################################################## hotspot heatmaps #######################################################################################################################################
 
     
@@ -771,18 +195,9 @@ def score_genes_by_batch(adata, gene_lists, gene_list_names):
     gene_list_names (list of str): A list of names for each gene list.
     batch_column (str): The name of the column in adata.obs that contains the batch information.
     """
-    signatures = [f'{name}_score' for name in gene_list_names]
-
-    unique_batches = adata.obs['batch'].unique()
-    for batch in unique_batches:
-        batch_data = adata[adata.obs['batch'] == batch]
-        for i, genes in enumerate(gene_lists):
-            sc.tl.score_genes(batch_data, genes, ctrl_size=200, n_bins=25,
-                              score_name=signatures[i], random_state=0, copy=False, use_raw=None)           
-            # Save the scores back to the original AnnData object
-            adata.obs.loc[batch_data.obs.index, signatures[i]] = batch_data.obs[signatures[i]]
-
+    adata, signatures=hotspot_helper.score_genes_by_batch(adata, gene_lists, gene_list_names)
     return adata, signatures
+
 
 def plot_gene_heatmap(adata, signatures, states_to_loop_through, plot_score=False, normalize_values=False,fig_size=(5, 5),
                       score_by_batch=False,save_path=None):
@@ -797,28 +212,8 @@ def plot_gene_heatmap(adata, signatures, states_to_loop_through, plot_score=Fals
         normalize_values (bool, optional): Whether to normalize the scores before plotting the heatmap. Defaults to False.
         score_by_batch (bool, optional): Whether to score the signatures by batch. Defaults to False.
     """
-    
-    # Calculate mean scores for each state and signature.
-    if score_by_batch:
-        # Calculate mean scores for each state and signature.
-        mean_scores, data_dict = spl.calculate_mean_scores_per_batch(adata, signatures, states_to_loop_through)
-        data_for_heatmap = spl.create_heatmap_data_per_batch(mean_scores, states_to_loop_through, signatures)
-
-    else:
-         # Calculate mean scores for each state and signature within each batch.
-        mean_scores, data_dict = spl.calculate_mean_scores(adata, signatures, states_to_loop_through)
-        # Create a DataFrame for heatmap with states as rows and signatures as columns.
-        data_for_heatmap = spl.create_heatmap_data(mean_scores, states_to_loop_through, signatures)
-
-        
-
-    # Normalize the data for heatmap if required.
-    if normalize_values:
-        data_for_heatmap = spl.normalize_heatmap_data(data_for_heatmap)
-
-    # Plot the heatmap using the normalized data.
-    spl.plot_heatmap(data_for_heatmap, signatures, states_to_loop_through, fig_size,plot_score,save_path)
-
+    data_for_heatmap=spl.plot_gene_heatmap(adata, signatures, states_to_loop_through, plot_score, normalize_values,fig_size,
+                      score_by_batch)
     return data_for_heatmap
 
 #bubble chart version of heatmap
@@ -833,7 +228,7 @@ def compare_gene_signatures(anndata_breast, gene_signatures, states, fig_size=(5
     :param bubble_size: Size of the bubbles in the bubble plot.
     """
     data = spl.calculate_signature_differences(anndata_breast, gene_signatures, states)
-    plot_bubble_chart(data, states, fig_size, bubble_size)
+    spl.plot_bubble_chart(data, states, fig_size, bubble_size)
 
 
 
@@ -847,99 +242,10 @@ def plot_signature_boxplot(anndata_breast,hotspot_variable,signature,fig_size=(3
     signature (str): The column name in anndata_breast.obs that contains the signature.
     fig_size (tuple): A tuple representing the figure size. Default is (3, 3).
     """
-    hot_data = anndata_breast.obs[~anndata_breast.obs[hotspot_variable[0]].isna()][signature]
-    cold_data = anndata_breast.obs[~anndata_breast.obs[hotspot_variable[1]].isna()][signature]
-    # Plotting
-    data = pd.DataFrame({
-    hotspot_variable[0]: hot_data,
-    hotspot_variable[1]: cold_data
-    })
+    spl.plot_signature_boxplot(anndata_breast,hotspot_variable,signature,fig_size,file_save)
 
-    # Melting the DataFrame to long format for seaborn
-    data_melted = data.melt(var_name='Hotspot', value_name='Response to Checkpoint Score')
-    
-
-
-    # Plotting
-    plt.figure(figsize=fig_size)
-    sns.boxplot(x='Hotspot', y='Response to Checkpoint Score', data=data_melted, showfliers=False)
-    plt.title('Response to Checkpoint Genes based on EMT Hallmarks')
-    plt.ylabel('Response to Checkpoint Score')
-    if file_save: 
-        plt.savefig(f"{file_save}_overall_comparison.pdf", dpi=300)
-    plt.show()
 
 ############################################################# hotspot sensitivity #############################################################################################
-#helper function
-def process_hotspots(adata, variable_name, parameter_size, sensitivity_parameter):
-    if sensitivity_parameter=="pvalue":
-        adata_hotspots = create_hotspots(
-            adata, column_name=variable_name,
-            neighbours_parameters=10,
-            p_value=parameter_size,
-            number_components_return=False,
-            number_hotspots=True
-        )
-    
-    if sensitivity_parameter=="neighbourhood":
-        adata_hotspots = create_hotspots(
-            adata, column_name=variable_name,
-            neighbours_parameters=parameter_size,
-            p_value=0.05,
-            number_components_return=False,
-            number_hotspots=True
-        )
-    return adata_hotspots
-
-#helper function
-def calculate_distances(adata_hotspots, variables):
-    return calculateDistances(adata_hotspots, variables,hotspot_number=True)
-
-#helper function
-def process_batches(spatial_anndata_obj, params):
-    distances_df_sensitivity = pd.DataFrame()
-
-    #add empty column to spatial_anndata_obj
-    for col in [params['variable_comparison'], params['variable_one'], params['variable_two'],
-            params['variable_comparison']+"_number", params['variable_one']+"_number", params['variable_two']+"_number"]:
-        spatial_anndata_obj.obs[col] = np.nan
-    for batch in spatial_anndata_obj.obs['batch'].unique():
-        adata_batch = spatial_anndata_obj[spatial_anndata_obj.obs['batch'] == batch]
-        tumour_filtered = adata_batch[adata_batch.obs['tumour_cells'] == 1]
-
-        # Processing for variable_comparison
-        adata_hotspots = process_hotspots(adata_batch if not params['variable_comparison_tumour'] else tumour_filtered, 
-                                          params['variable_comparison'].rsplit('_', 1)[0], 
-                                          params['parameter_comparison_variable_neighbourhood'],params['sensitivity_parameter'])
-        spatial_anndata_obj=spl.add_hotspots_to_fullanndata(spatial_anndata_obj,params['variable_comparison'].rsplit('_', 1)[0],batch,adata_hotspots)
-
-        # Processing for variable_one and variable_two
-        for variable in [params['variable_one'], params['variable_two']]:
-            adata_hotspots = process_hotspots(tumour_filtered if params['variable_one_two_is_tumour'] else adata_batch, 
-                                              variable.rsplit('_', 1)[0], 
-                                              params['parameter_variables_neighbourhood'],params['sensitivity_parameter'])
-            spatial_anndata_obj=spl.add_hotspots_to_fullanndata(spatial_anndata_obj,variable.rsplit('_', 1)[0],batch,adata_hotspots)
-        
-        #select tumour_cell column in spatial_anndata 
-        spatial_anndata_obj.obs.loc[
-            (spatial_anndata_obj.obs['batch'] == batch) & (spatial_anndata_obj.obs['tumour_cells'] == 1), 
-            'tumour_cells_number'
-        ] = batch
-
-
-        # Calculate distances
-        #filter spatial_anndata to only include batch
-        #spatial_anndata_batch=spatial_anndata[spatial_anndata.obs['batch']==batch]
-        #sc.pl.spatial(spatial_anndata_batch,color=params['variable_one'],library_id=str(batch))
-        #sc.pl.spatial(spatial_anndata_batch,color=params['variable_two'],library_id=str(batch))
-        #sc.pl.spatial(spatial_anndata_batch,color=params['variable_three'],library_id=str(batch))
-    distances_batch = calculate_distances(spatial_anndata_obj, [params['variable_one'], params['variable_two'],params['variable_comparison'],params['variable_three']])
-    distances_df_sensitivity = pd.concat([distances_df_sensitivity, distances_batch])
-
-
-    return distances_df_sensitivity
-
-
 def sensitivity_calcs(spatial_anndata, params):
     """
     This function calculates the sensitivity based on various parameters and returns several lists as output.
@@ -963,60 +269,24 @@ def sensitivity_calcs(spatial_anndata, params):
     - results (dict): A dictionary containing the calculated distances.
 
     """
-    results = {
-        "distance_variable_one": [],
-        "distance_variable_two": [],
-        "distance_variable_three": []
-    }
+    sensitivity_analysis.sensitivity_calcs(spatial_anndata, params)
 
-    for neighbourhood_val in params['values_to_test']:
-        if params['sensitivity_parameter']=="pvalue":
-            params['parameter_comparison_variable_neighbourhood'] = neighbourhood_val if not params['variable_comparison_constant'] else 0.05
-        
-        if params['sensitivity_parameter']=="neighbourhood":
-            params['parameter_comparison_variable_neighbourhood'] = neighbourhood_val if not params['variable_comparison_constant'] else 10
-        params['parameter_variables_neighbourhood'] = neighbourhood_val
+def process_tumor_perimeter(adata):
+    """
+    Process the tumor perimeter cells in the dataset.
 
-        distances_df_sensitivity = process_batches(spatial_anndata, params)
-      
-        
-        distance_variable_one = distances_df_sensitivity[
-            (distances_df_sensitivity['comparison_variable'] == params['variable_comparison']) & 
-            (distances_df_sensitivity['primary_variable'] == params['variable_one'])
-        ].groupby(['batch','hotspot_number'])['min_distance'].median()
+    Parameters:
+    - adata: AnnData object containing single-cell spatial data with the following annotations:
+        - adata.obs['batch']: A categorical column indicating the batch each cell belongs to.
+        - adata.obs['tumour_cells']: A binary column indicating whether a cell is a tumour cell (1) or not (0).
 
-        distance_variable_two = distances_df_sensitivity[
-            (distances_df_sensitivity['comparison_variable'] == params['variable_comparison']) & 
-            (distances_df_sensitivity['primary_variable'] == params['variable_two'])
-            ].groupby(['batch','hotspot_number'])['min_distance'].median()
-        
-        print("distance_variable_two",distance_variable_two)
-
-        #reference value ie tumour cells 
-        distance_variable_three = distances_df_sensitivity[
-            (distances_df_sensitivity['comparison_variable'] == params['variable_comparison']) & 
-            (distances_df_sensitivity['primary_variable'] == params['variable_three'])
-        ].groupby(['batch','hotspot_number'])['min_distance'].median()  
-
-        print("distance_variable_three",distance_variable_three)
-
-        #here we want to look at MIN, MEDIAN, MEAN of EACH hotspot within variable of interest, group by hotspot ID in the functio above
-
-        #paired_df = pd.DataFrame({'variable_one': distance_variable_one, 'variable_two': distance_variable_two,'variable_three':distance_variable_three }).dropna()
-        results["distance_variable_one"].append(distance_variable_one.median())
-        results["distance_variable_two"].append(distance_variable_two.median())
-        print("distance_variable_two_median",distance_variable_two.median())
-
-        results["distance_variable_three"].append(distance_variable_three.median())
-        print("distance_variable_three_median",distance_variable_three.median())
-
-    spl.plot_sensitivity(params['values_to_test'], results, params['variable_comparison'],
-                     params['variable_one'], params['variable_two'], params['variable_three'], params['save_path'],params['sensitivity_parameter'])
-
-    return results
-
-
-
+    Returns:
+    - adata: AnnData object with an updated column in `data.obs` indicating tumour perimeter cells.
+        - adata.obs['tumour_perimeter']: A column indicating whether a cell is a tumour perimeter cell ('Yes') or not (NaN).
+    """
+    adata=tumour_perimeter.process_tumor_perimeter(adata)
+    return adata
+    
 
 ################################Plot differences by batch ################################
 
@@ -1038,139 +308,54 @@ def plot_bubble_chart_by_batch(df, primary_variable_value, comparison_variable_v
     Returns:
     DataFrame: The grouped and processed DataFrame used for plotting.
     """
-    # Prepare the data for plotting
-    grouped_data = spl.prepare_data_hotspot(df, primary_variable_value, comparison_variable_values,reference_variable)
-    fig, ax = plt.subplots(figsize=fig_size)
-    slides = df['batch'].unique()
+    grouped_data=spl.plot_bubble_chart_by_batch(df, primary_variable_value, comparison_variable_values, reference_variable, save_path, pval_cutoff, fig_size,bubble_size,slide_order)
 
-    if slide_order:
-        slide_positions = slide_order
-    else:
-        slide_positions = {slide: idx for idx, slide in enumerate(slides)}
-        
-    # Bonferroni correction
-    n_tests = len(slides)
-    bonferroni_alpha = pval_cutoff / n_tests
-    # Iterate through the grouped data and plot each point
-    for idx, row in grouped_data.iterrows():
-        if row['primary_variable'] != reference_variable:
-            # Determine position and color based on data values
-            y_pos = slide_positions.get(row['batch'], 0)
-            color = 'blue' if row['Difference'] > 0 else 'red'
-            alpha = 1 if row['Pvalue'] < bonferroni_alpha else 0  # Transparency based on significance
-            # Plot the bubble
-            ax.scatter(row['comparison_variable'], y_pos, s=abs(row['Difference'])*bubble_size, color=color, alpha=alpha, edgecolors='white', linewidth=0.3)
-    ax.set_yticks(list(slide_positions.values()))
-    ax.set_yticklabels(list(slide_positions.keys()))
-    labels=grouped_data['comparison_variable'].unique()
-    ax.set_xticklabels(labels, rotation=90)
-
-    #ax.set_xticklabels([label for label in comparison_variable_values], rotation=90)
-    red_patch = mpatches.Patch(color='red', label='Closer to {}'.format(primary_variable_value))
-    blue_patch = mpatches.Patch(color='blue', label='Closer to {}'.format(reference_variable))
-
-    # Place the legend at the top of the figure
-    ax.legend(handles=[red_patch, blue_patch], loc='lower center', bbox_to_anchor=(0.5, 1.05), ncol=2, borderaxespad=0.)
-
-    # Adjust layout to make room for the legend
-    plt.tight_layout(rect=[0, 0, 1, 0.95])
-
-    if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
-    plt.show()
-    # Return the processed DataFrame
     return grouped_data
+
+def plot_results_gene_signatures_heatmap(adata_vis, variable_one, comparison_variable, genes, file_path_plots,gene_signature_name,fig_size=(6, 7.2)):
+    spl.plot_results_gene_signatures_heatmap(adata_vis, variable_one, comparison_variable, genes, file_path_plots,gene_signature_name,fig_size)
+
+def plot_condition_differences(adata, variable_of_interest, conditions, save_path=None):
+    spl.plot_condition_differences(adata, variable_of_interest, conditions, save_path)
 
 #################################neighbourhood analysis plotting ##########################################
 
-def get_neighboring_node_abundance(node_name,connectivity_matrix,cell_abundance,source_nodes,neighbourhood_variable_filter_for_tumour_cells):
-    """
-    Calculate the normalized abundance of neighboring nodes for a given node.
 
-    Parameters:
-    - node_name (str): The name of the node for which neighbors' abundance is to be calculated.
-    - connectivity_matrix (DataFrame): A pandas DataFrame representing the connectivity matrix where indices 
-      and columns are node names. A value of 1 indicates a connection between nodes.
-    - cell_abundance (DataFrame): A pandas DataFrame where each row represents a node and columns represent 
-      different cell abundances.
-
-    Returns:
-    - mean (Series): A pandas Series representing the mean abundance of neighboring nodes.
-    """
-    # Filter connectivity matrix for the given node
-    filtered=connectivity_matrix[node_name]
-    # Identify neighboring nodes
-    neighbouring_nodes=filtered[(filtered == 1)].index.values
-    # Calculate mean abundance for neighboring nodes
-    cell_abundance_filtered=cell_abundance[cell_abundance.index.isin(neighbouring_nodes)]
-    
-
-    if neighbourhood_variable_filter_for_tumour_cells is not None:
-        cell_abundance_filtered = cell_abundance[cell_abundance.index.isin(neighbouring_nodes)]
-        # Filter source_nodes to include only those present in cell_abundance_filtered
-        filtered_source_nodes = [node for node in source_nodes if node in cell_abundance_filtered.index]
-        # Calculate mean for columns in 'neighbourhood_variable_filter_for_tumour_cells' only for source nodes present in cell_abundance_filtered
-        if filtered_source_nodes:
-        # Calculate mean for columns in 'neighbourhood_variable_filter_for_tumour_cells' only for source nodes present in cell_abundance_filtered
-            means_for_filtered_columns = cell_abundance_filtered.loc[filtered_source_nodes, neighbourhood_variable_filter_for_tumour_cells].mean(axis=0)
-        else:
-            # If filtered_source_nodes is empty, create an empty Series
-            means_for_filtered_columns = pd.Series(np.nan, index=[neighbourhood_variable_filter_for_tumour_cells])
-        if not isinstance(means_for_filtered_columns, pd.Series):
-            means_for_filtered_columns = pd.Series([means_for_filtered_columns], index=[neighbourhood_variable_filter_for_tumour_cells])
-        # Calculate mean for all other columns across all neighbouring nodes
-        other_columns = [col for col in cell_abundance_filtered.columns if col not in neighbourhood_variable_filter_for_tumour_cells]
-        means_for_other_columns = cell_abundance_filtered[other_columns].mean(axis=0)
-        # Combine the two results
-        mean_results = pd.concat([means_for_filtered_columns, means_for_other_columns])
-    else:
-        mean_results=cell_abundance_filtered.mean(axis=0)
-        
-    return mean_results
 
 def calculate_neighbourhood_correlation(rings_range,adata_vis,neighbour_variables,source_nodes,
                                         neighbourhood_variable_filter_for_tumour_cells=None,
                                         split_by_batch=False):
     """
+
+    Calculate the correlation between source nodes and neighbouring nodes for varying neighborhood sizes.
+
+    Parameters:
+    - rings_range: Iterable of integers specifying the range of neighborhood sizes (number of rings) to consider.
+    - adata_vis: AnnData object containing spatial data with the following:
+        - adata_vis.obs['batch']: A categorical column indicating the batch each cell belongs to.
+    - neighbour_variables: DataFrame containing variables for the TME cells to be considered in the correlation.
+    - source_nodes: List of source nodes for which the neighborhood correlation is calculated wrt. e.g. EMT
+    - neighbourhood_variable_filter_for_tumour_cells: (Optional) Filter to apply on neighboring variables for tumour cells.
+    - split_by_batch: Boolean indicating whether to calculate correlations separately for each batch.
     If split_by_batch is True, calculate the correlation between source nodes and neighbouring nodes for each batch. 
     As we take the median of the correlation values, the pvalues are not returned.
+
+    Returns:
+    - results: Dictionary with neighborhood size as keys and correlation matrices (and p-values if not split by batch) as values.
     """
-    results = {}
-    for rings_for_neighbours_value in rings_range:
-        sq.gr.spatial_neighbors(adata_vis, n_rings=rings_for_neighbours_value, coord_type="grid", n_neighs=6)
-        connectivity_matrix=pd.DataFrame.sparse.from_spmatrix(adata_vis.obsp['spatial_connectivities'])
-        connectivity_matrix.index=adata_vis.obs.index
-        connectivity_matrix.columns=adata_vis.obs.index
-        node_abundance_list = []
-        for node_name in tqdm(source_nodes):
-            sum_cell_abundance=get_neighboring_node_abundance(node_name,connectivity_matrix,neighbour_variables,source_nodes,neighbourhood_variable_filter_for_tumour_cells)
-            node_abundance_list.append(sum_cell_abundance)
-        node_df_cell_abundance = pd.DataFrame(node_abundance_list, index=source_nodes,columns=neighbour_variables.columns)
-        node_df_cell_abundance.index=source_nodes
-    
-        #split by batch here
-        if split_by_batch:
-            node_df_cell_abundance['batch'] = adata_vis.obs['batch']
-            temp_results={}
-            #MAYBE NEED TO FILTER FOR BATCH HERE!!!!!
-            for name, group in node_df_cell_abundance.groupby('batch'):
-                # Calculate pairwise correlations and p-values within each batch
-                # Let's assume you're interested in correlations between all pairs of the first four columns as an example
-                corr_matrix = group.corr()
-                temp_results[name] = corr_matrix
-            average_corrs = pd.concat([r for r in temp_results.values()]).groupby(level=0).median()
-            results[rings_for_neighbours_value] = average_corrs
-        else:   
-            corr_df = node_df_cell_abundance.corr()
-            pval = node_df_cell_abundance.corr(method=lambda x, y: pearsonr(x, y)[1]) - np.eye(*corr_df.shape)
-            results[rings_for_neighbours_value] = corr_df, pval
+    results=neighbourhood_allinone_helper.calculate_neighbourhood_correlation(rings_range,
+                                                                adata_vis,
+                                                                neighbour_variables,
+                                                                source_nodes,
+                                                                neighbourhood_variable_filter_for_tumour_cells,
+                                                                split_by_batch)
 
     return results
     
 
 
 
-def correlation_heatmap_neighbourhood(results, *variables, save_path=None, pval_cutoff=0.05,fig_size=(5, 5)):
+def correlation_heatmap_neighbourhood(results,variables=None, save_path=None, pval_cutoff=0.05,fig_size=(5, 5)):
     """
     Plot heatmap from correlation dataframes.
 
@@ -1184,21 +369,8 @@ def correlation_heatmap_neighbourhood(results, *variables, save_path=None, pval_
 
     The function plots a heatmap and optionally saves it to a file.
     """
-    corr_df=results[0]
-    pvalue_df=results[1]
-    sub_corr = corr_df.loc[variables, :]
-    sub_pval = pvalue_df.loc[variables, :]
-    annot = sub_pval.applymap(spl.format_pval_annotation)
-    #select fig_height from fig_size
-    plt.figure(figsize=fig_size)
-    ax = sns.heatmap(sub_corr, cmap="RdBu_r", center=0, annot=annot, cbar=True, square=True, 
-                     linewidth=0.5, linecolor='black',fmt="s")
-    ax.set_yticklabels(ax.get_yticklabels(), rotation=0)
-    ax.set_xticks(np.arange(sub_corr.shape[1]) + 0.5, minor=False)
-    ax.set_xticklabels(sub_corr.columns, rotation=90)
-    if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
-    plt.show()
+    neighbourhood_plotting.correlation_heatmap_neighbourhood(results, variables, save_path, pval_cutoff,fig_size)
+
     
 def plot_correlation_shifts(ring_sensitivity_results1, correlation_primary_variable, save_path, ring_sensitivity_results2=None,
                             correlation_primary_variable2=None, fig_size=(10, 3), split_by_batch=False,
@@ -1216,59 +388,9 @@ def plot_correlation_shifts(ring_sensitivity_results1, correlation_primary_varia
 
     The function plots and saves a multi-subplot figure showing correlation shifts for one or two sets of data.
     """
-    sns.set_style("white")
-    x_values = list(ring_sensitivity_results1.keys())
-    if split_by_batch:
-        all_columns = ring_sensitivity_results1[x_values[0]].columns
-    else:
-        all_columns = ring_sensitivity_results1[x_values[0]][0].columns
-    x_indices = range(len(x_values))
-
-    # Figure setup
-    n_cols = 5
-    n_rows = int(np.ceil(len(all_columns) / n_cols))
-    fig_width = fig_size[0]
-    fig_height = fig_size[1] * n_rows
-    fig, axes = plt.subplots(n_rows, n_cols, figsize=(fig_width, fig_height), sharey=True)
-    fig.suptitle(f'{correlation_primary_variable} correlation shifts', fontsize=16)
-
-    for idx, column in enumerate(all_columns):
-        row_idx = idx // n_cols
-        col_idx = idx % n_cols
-        ax = axes[row_idx, col_idx] if n_rows > 1 else axes[col_idx]
-
-        # Plotting for first results set
-        if label_one is None:
-            label_one='Set 1'
-        y_values1 = [ring_sensitivity_results1[key][0].loc[correlation_primary_variable, column] for key in x_values] if not split_by_batch else [ring_sensitivity_results1[key].loc[correlation_primary_variable, column] for key in x_values]
-        ax.plot(x_indices, y_values1, '-o', color='black', markersize=6, markerfacecolor='red')
-
-        # Optionally plot second results set
-        if ring_sensitivity_results2:
-            if label_two is None:
-                label_two='Set 2'
-            y_values2 = [ring_sensitivity_results2[key][0].loc[correlation_primary_variable2, column] for key in x_values] if not split_by_batch else [ring_sensitivity_results2[key].loc[correlation_primary_variable2, column] for key in x_values]
-            ax.plot(x_indices, y_values2, '-o', color='black', markersize=6, markerfacecolor='blue')
-
-        ax.set_title(column, fontsize=12)
-        ax.set_xticks(x_indices)
-        ax.set_xticklabels(x_values, rotation=45, fontsize=10)
-        ax.set_xlabel("Number of rings", fontsize=12)
-        ax.set_ylabel("Correlation", fontsize=12)
-        ax.tick_params(axis="y", labelsize=10)
-        if y_limits is not None:
-            ax.set_ylim(y_limits)
-
-        ax.legend()
-
-    # Remove any extra subplots
-    if len(all_columns) % n_cols != 0:
-        for j in range(len(all_columns) % n_cols, n_cols):
-            fig.delaxes(axes[n_rows - 1, j])
-
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.show()
+    neighbourhood_plotting.plot_correlation_shifts(ring_sensitivity_results1, correlation_primary_variable, save_path, ring_sensitivity_results2,
+                            correlation_primary_variable2, fig_size, split_by_batch,
+                            label_one,label_two,y_limits)
 
 def plot_overall_change(ring_sensitivity_results,correlation_primary_variable,save_path,split_by_batch=False,fig_size=(10, 7)):
     """
@@ -1284,71 +406,13 @@ def plot_overall_change(ring_sensitivity_results,correlation_primary_variable,sa
     The function creates a bar plot showing the difference in correlation values for the primary variable across 
     the specified range of rings. Positive and negative changes are indicated with different color gradients.
     """
-    differences = []
-    x_values = list(ring_sensitivity_results.keys())
-    if split_by_batch:
-        all_columns = ring_sensitivity_results[x_values[0]].columns
-    else:
-        all_columns = ring_sensitivity_results[x_values[0]][0].columns
+    neighbourhood_plotting.plot_overall_change(ring_sensitivity_results,correlation_primary_variable,save_path,split_by_batch,fig_size)
     
-    for column in all_columns:
-        if split_by_batch:
-            first_value = ring_sensitivity_results[x_values[0]].loc[correlation_primary_variable, column]
-            last_value = ring_sensitivity_results[x_values[-1]].loc[correlation_primary_variable, column]
-        else:
-            first_value = ring_sensitivity_results[x_values[0]][0].loc[correlation_primary_variable, column]
-            last_value = ring_sensitivity_results[x_values[-1]][0].loc[correlation_primary_variable, column]
-        differences.append(last_value - first_value)
-    sorted_indices = np.argsort(differences)
-    sorted_differences = np.array(differences)[sorted_indices]
-    sorted_columns = np.array(all_columns)[sorted_indices]
-    # Create gradients for both negative and positive values
-    negative_values = [val for val in sorted_differences if val < 0]
-    positive_values = [val for val in sorted_differences if val > 0]
-    negative_colors = sns.color_palette("Blues_r", n_colors=len(negative_values))  # reversed gradient
-    positive_colors = sns.color_palette("Reds", n_colors=len(positive_values)+1)  # reversed gradient
-    gradient_colors = negative_colors + positive_colors
 
-    fig, ax = plt.subplots(figsize=fig_size)
-    sns.set_style("white")
-
-    bars = ax.bar(sorted_columns, sorted_differences, color=gradient_colors)  # Vertical bar plot
-    ax.axhline(0, color='black', linewidth=0.8)
-    ax.set_ylabel('Conrrelation change')
-    ax.set_title(f'Difference in Correlation Values when varying ring size for {correlation_primary_variable}')
-    ax.tick_params(axis='x', rotation=90, labelsize=12)  # Rotate x-axis labels by 45 degrees & increase font size
-    #rotate x-axis labels by 45 degrees
-    plt.xticks(rotation=45, ha='right')
-    plt.tight_layout()
-    plt.savefig(save_path, dpi=300, bbox_inches='tight')
-    plt.show()
-
-
-###################neighbourhood enrichment zones ############################################################
-def get_neighboring_node_abundance_enrichment(node_name, cell_abundance,neighbors_matrix,source_nodes):
-    # Get indices of neighboring nodes
-    neighboring_nodes_indices = neighbors_matrix.loc[node_name, :]
-    inner_nodes = neighboring_nodes_indices[neighboring_nodes_indices > 0].index.values
-    #ensure inner nodes are tumour cells
-    inner_nodes=[node for node in inner_nodes if node in source_nodes]
-
-    # Calculate mean abundance for neighboring nodes
-    mean = cell_abundance.loc[inner_nodes].mean(axis=0)
-    #print("inner",inner_nodes)
-    #print("inner abundance",cell_abundance.loc[inner_nodes])
-    return mean,inner_nodes
-
-# Function to identify nodes in the next outer ring
-def get_outer_ring_nodes(node_name,outer_neighbours_matrix,inner_nodes):
-    # Get indices of neighboring nodes for ring range + 1
-    outer_ring_nodes = outer_neighbours_matrix.loc[node_name]
-    outer_ring_nodes = outer_ring_nodes[outer_ring_nodes > 0].index.values
-    # Exclude nodes that are also in the inner ring
-    outer_ring_nodes = [node for node in outer_ring_nodes if node not in inner_nodes]
-    return outer_ring_nodes
 
 #returns cell abundance for inner and outer rings
 def calculate_inner_outer_neighbourhood_enrichment(rings_range, adata_vis, neighbour_variables, source_nodes):
+
     """
     Calculates cell abundance for inner and outer rings and returns results for different ring ranges.
 
@@ -1361,45 +425,7 @@ def calculate_inner_outer_neighbourhood_enrichment(rings_range, adata_vis, neigh
     Returns:
     - Dict: Dictionary containing cell abundance mean results for inner and outer rings for each ring range.
     """
-    inner_outer_results={}
-    for ring_range in rings_range:
-        # Set the maximum ring range for spatial_neighbors computation
-        max_ring_range = ring_range + 1
-        # Precompute spatial neighbors with the maximum ring range
-        sq.gr.spatial_neighbors(adata_vis, n_rings=max_ring_range, coord_type="grid", n_neighs=6)
-        neighbors_matrix_outer = pd.DataFrame.sparse.from_spmatrix(adata_vis.obsp['spatial_connectivities'])
-        neighbors_matrix_outer.index = adata_vis.obs.index
-        neighbors_matrix_outer.columns = adata_vis.obs.index
-        if ring_range > 0:
-            # Precompute spatial neighbors with the ring range
-            sq.gr.spatial_neighbors(adata_vis, n_rings=ring_range, coord_type="grid", n_neighs=6)
-            neighbors_matrix_inner = pd.DataFrame.sparse.from_spmatrix(adata_vis.obsp['spatial_connectivities'])
-            neighbors_matrix_inner.index = adata_vis.obs.index
-            neighbors_matrix_inner.columns = adata_vis.obs.index
-            inner_ring_means = []
-            outer_ring_means = []
-            for node_name in tqdm(source_nodes):
-                # Process each node
-                inner_mean,neighboring_nodes = get_neighboring_node_abundance_enrichment(node_name, neighbour_variables, neighbors_matrix_inner,source_nodes)
-                outer_nodes = get_outer_ring_nodes(node_name, neighbors_matrix_outer, neighboring_nodes)
-                outer_mean = neighbour_variables.loc[outer_nodes].mean(axis=0)
-                inner_ring_means.append(inner_mean)
-                outer_ring_means.append(outer_mean)
-        else:
-            inner_ring_means = []
-            outer_ring_means = []
-            for node_name in tqdm(source_nodes):
-                # Process each node
-                inner_mean = neighbour_variables.loc[node_name].mean(axis=0)
-                inner_ring_means.append(inner_mean)
-                #empty neighbouring nodes
-                outer_nodes = get_outer_ring_nodes(node_name, neighbors_matrix_outer, [])
-                outer_ring_means.append(inner_mean)
-        # Convert lists to DataFrames
-        inner_df_1 = pd.DataFrame(inner_ring_means, index=source_nodes, columns=neighbour_variables.columns)
-        outer_df_1 = pd.DataFrame(outer_ring_means, index=source_nodes, columns=neighbour_variables.columns)
-        inner_outer_results[ring_range] = inner_df_1,outer_df_1
-
+    inner_outer_results=neighbourhood_inner_outer_helper.calculate_inner_outer_neighbourhood_enrichment(rings_range, adata_vis, neighbour_variables, source_nodes)
     return inner_outer_results
 
 #using cell abundance from calculate_inner_outer_neighbourhood_enrichment, we calculate corr_df and pval that we can use to plot using functions previoulsy defined
@@ -1422,42 +448,10 @@ def calculate_corr_pvalue_for_inner_outer_neighbourhood_enrichment(results,corre
     - Dict: Dictionary containing correlation DataFrame and p-value for each ring. We can then run previous plots e.g. plot_correlation_shifts() on this. Equally accessing each element 
     of dict returns correlations and pvalue for that ring range.
     """
-    corr_pval_results={}
-    for ring in rings_range:
-        inner_df,outer_df=results[ring]
-        outer_df[f'{correlation_key_variable}_inner_values']=inner_df[correlation_key_variable]
-
-        if average_by_batch:
-            #if index contains 'Cancer' or 'Luminal' or 'Myoepithelial' remove from corr_df            
-            outer_df['batch'] = adata_vis.obs['batch']
-            temp_results={}
-            for name, group in outer_df.groupby('batch'):
-                # Calculate pairwise correlations and p-values within each batch
-                # Let's assume you're interested in correlations between all pairs of the first four columns as an example
-                corr_matrix = group.corr()
-                temp_results[name] = corr_matrix
-            average_corrs = pd.concat([r for r in temp_results.values()]).groupby(level=0).median()
-            
-            corr_pval_results[ring] = average_corrs
-
-            
-        else:
-            inner_df,outer_df=results[ring]
-            outer_df[f'{correlation_key_variable}_inner_values']=inner_df[correlation_key_variable]
-            corr_df=outer_df.corr()
-            #if index contains 'Cancer' or 'Luminal' or 'Myoepithelial' remove from corr_df
-            
-            corr_df=outer_df.corr()
-            p_val=outer_df.corr(method=lambda x, y: pearsonr(x, y)[1]) - np.eye(*corr_df.shape)
-            corr_pval_results[ring] = corr_df, p_val
+    corr_pval_results=neighbourhood_inner_outer_helper.calculate_corr_pvalue_for_inner_outer_neighbourhood_enrichment(results,correlation_key_variable,rings_range,average_by_batch,adata_vis,source_nodes)
     return corr_pval_results
 
 
-def plot_results_gene_signatures_heatmap(adata_vis, variable_one, comparison_variable, genes, file_path_plots,gene_signature_name,fig_size=(6, 7.2)):
-    spl.plot_results_gene_signatures_heatmap(adata_vis, variable_one, comparison_variable, genes, file_path_plots,gene_signature_name,fig_size)
-
-def plot_condition_differences(adata, variable_of_interest, conditions, save_path=None):
-    spl.plot_condition_differences(adata, variable_of_interest, conditions, save_path)
 
 def plot_correlation_coefficients_bar_chart(correlation_dict,ring_value,variable_to_compare,save_path=None,fig_size=(10,8)):
     """
@@ -1468,26 +462,8 @@ def plot_correlation_coefficients_bar_chart(correlation_dict,ring_value,variable
     - ring_value (str): The key within 'results' dict that refers to a specific set of correlation data.
     - variable_to_compare (str): The specific variable within the ring data to compare across metrics.
     """
-
-    series=correlation_dict[ring_value][variable_to_compare]
-    try:
-        series = series.drop(index=variable_to_compare)
-    #if the row does not exist, pass
-    except:
-        pass
-    # Sort series by absolute values while preserving the sign
-    sorted_series = series.sort_values(ascending=False) 
-
-    # Plot
-    plt.figure(figsize=fig_size)
-    sorted_series.plot(kind='bar', color=sorted_series.map(lambda x: 'g' if x > 0 else 'r'))
-    plt.axhline(0, color='black', linewidth=0.8)
-    plt.title('Bar Chart of Values Ranked by Correlation Coefficient')
-    if save_path:
-        plt.savefig(save_path, bbox_inches='tight')
-    else:
-        plt.show()
-
+    neighbourhood_plotting.plot_correlation_coefficients_bar_chart(correlation_dict,ring_value,variable_to_compare,save_path,fig_size)
+    
 def plot_correlation_coefficients_heatmap(correlation_dict, correlation_variable, save_path=None,fig_size=(15, 6)):
     """
     Plots a bar heatmap correlation coefficients for different ring sizes
@@ -1497,29 +473,7 @@ def plot_correlation_coefficients_heatmap(correlation_dict, correlation_variable
     - save_path (str): Path to save the heatmap image. If None, the heatmap is not saved.
     - correlation_variable (str): The specific variable  to compare across.
     """
-    
-    
-    
-    heatmap_data = pd.DataFrame()
-    for ring_value, corr_matrix in correlation_dict.items():
-        # Extract the row for ['0']_inner_values
-        if correlation_variable in corr_matrix.index:
-            heatmap_data[ring_value] = corr_matrix.loc[correlation_variable]
-    # Transpose the DataFrame to have batches as columns and variables as rows
-    heatmap_data = heatmap_data.transpose()
-    # Plotting the heatmap
-    plt.figure(figsize=fig_size)  # Set the figure size as necessary
-    sns.heatmap(heatmap_data, annot=False, cmap='coolwarm', center=0)
-    plt.title("Correlation Heatmap with ['0']_inner_values Across Batches")
-    plt.xlabel("Variables")
-    plt.ylabel("Ring sizes")
-    plt.xticks(rotation=90)  # Rotate variable names for better visibility
-    plt.tight_layout()  # Adjust subplots to fit into figure area.
-    
-    if save_path:
-        plt.savefig(save_path)
-    else:
-        plt.show()
+    neighbourhood_plotting.plot_correlation_coefficients_heatmap(correlation_dict, correlation_variable, save_path,fig_size)
 
 def add_genes_to_obs(adata, gene_list):
     """
@@ -1532,52 +486,22 @@ def add_genes_to_obs(adata, gene_list):
     Returns:
     - Updates the anndata object in place, no return value.
     """
-    # Check each gene in the provided list
-    for gene in gene_list:
-        if gene in adata.var_names:
-            # Get the index of the gene in var_names
-            gene_index = adata.var_names.get_loc(gene)
-            # Extract the expression values from the .X attribute
-
-            gene_expression = adata.X[:, gene_index].toarray().flatten() if isspmatrix(adata.X) else adata.X[:, gene_index]
-            # Add to .obs with gene name as the new column name
-            adata.obs[gene] = gene_expression
-        else:
-            print(f"Gene {gene} not found in var_names.")
+    hotspot_helper.add_genes_to_obs(adata, gene_list)
 
 
 ############################### individual hotspot analysis ##########################################
-def plot_distance_distributions_across_batches(df, comparison_variable,fig_size,fig_name=None):
+def plot_distance_distributions_across_batches(distance_df, comparison_variable,fig_size=(3, 5),fig_name=None):
     """
     Plots distribution of minimum distances across different batches, comparing two primary variables.
     Parameters:
-    - df (DataFrame): DataFrame containing data with 'comparison_variable', 'primary_variable', 
+    - distance_df (DataFrame): The distance DataFrame containing data with 'comparison_variable', 'primary_variable', 
       'batch', and 'min_distance' columns.
     - comparison_variable (str): Variable based on which DataFrame is filtered to compare the 
       distributions of minimum distances.
     - fig_size (tuple): Figure size to set for the plot, e.g., (width, height).
 
     """
-    #F7A8AA
-    #ABA9D4
-    df = df[df['comparison_variable'] == comparison_variable]
-    primary_variables = df['primary_variable'].unique()
-    df_merged = pd.DataFrame()
-    for variable in primary_variables:
-        df_filtered = df[df['primary_variable'] == variable]
-        for index, row in df_filtered.iterrows():
-            if variable == primary_variables[0]: 
-                new_row = {'min_distances_0_hot': row['min_distance'], 'batch': row['batch'], 'min_distances_1_hot': np.nan}
-            else:  
-                new_row = {'min_distances_0_hot': np.nan, 'batch': row['batch'], 'min_distances_1_hot': row['min_distance']}
-            df_merged = pd.concat([df_merged, pd.DataFrame([new_row])], ignore_index=True)
-    plt.figure(figsize=fig_size)
-    
-    joypy.joyplot(df_merged, by='batch', legend=True)
-    if fig_name:
-        plt.savefig(fig_name)
-    plt.show()
-
+    access_individual_hotspots.plot_distance_distributions_across_batches(distance_df, comparison_variable,fig_size,fig_name)
 
 def plot_distance_distributions_across_hotspots(df, comparison_variable,batch,fig_size=(3, 5),fig_name=None):
     """
@@ -1591,41 +515,7 @@ def plot_distance_distributions_across_hotspots(df, comparison_variable,batch,fi
         - batch (int or str): The batch number to filter the DataFrame on, isolating data for specific analysis.
         - fig_size (tuple): The size of the figure for the plot, specified as (width, height).
     """    
-    df=df[df['comparison_variable']==comparison_variable]
-    df=df[df['batch']==batch]
-    df['hotspot_suffix'] = df['hotspot_number'].apply(lambda x: x.split('_')[-1])
-
-    # Sort DataFrame by the helper column and then by hotspot_number
-    df = df.sort_values(by=['hotspot_suffix', 'hotspot_number'])# Get unique primary variables and create a color palette
-    unique_primary_variable = df['primary_variable'].unique()
-    palette = sns.color_palette("hsv", len(unique_primary_variable))
-    color_dict = dict(zip(unique_primary_variable, palette))
-
-    # Map colors to hotspot numbers based on primary variables
-    hotspot_color_map = df.drop_duplicates('hotspot_number').set_index('hotspot_number')['primary_variable'].map(color_dict).to_dict()
-
-    # Ensure the colors are mapped in the correct order after sorting
-    colors = [hotspot_color_map[x] for x in df['hotspot_number'].unique()]
-
-    # Create joyplot with colored distributions
-    fig, axes = joypy.joyplot(
-        df.groupby('hotspot_number',sort=False),
-        column="min_distance",
-        legend=True,
-        color=colors
-    )
-
-    # Add colorbar
-    sm = plt.cm.ScalarMappable(cmap=mcolors.ListedColormap(palette), norm=plt.Normalize(vmin=0, vmax=len(unique_primary_variable) - 1))
-    colorbar_axes = fig.add_axes([0.93, 0.15, 0.02, 0.7])  # Adjust the position and size of the colorbar
-    cbar = fig.colorbar(sm, cax=colorbar_axes)
-    cbar.set_ticks(np.linspace(0, 1, len(unique_primary_variable)))
-    cbar.ax.set_yticklabels(unique_primary_variable)
-    cbar.ax.tick_params(labelsize=10)
-    fig.set_size_inches(*fig_size)
-    if fig_name:
-        plt.savefig(fig_name)
-    plt.show()
+    access_individual_hotspots.plot_distance_distributions_across_hotspots(df, comparison_variable,batch,fig_size,fig_name)
 
 
 def plot_hotspots_by_number(
@@ -1635,11 +525,4 @@ def plot_hotspots_by_number(
     save_path: Optional[str] = None,
     color_for_spots: str = 'Reds_r'
 ) -> None:
-
-    if batch_single is not None:
-        data_subset = anndata[anndata.obs['batch'] == str(batch_single)]
-        sc.pl.spatial(data_subset, color=[column_name],  vmax='p0',color_map=color_for_spots, library_id=str(batch_single),save=f"_{save_path}",colorbar_loc=None,alpha_img= 0.5)
-    else:
-        for batch in anndata.obs['batch'].unique():
-            data_subset = anndata[anndata.obs['batch'] == str(batch)]
-            sc.pl.spatial(data_subset, color=[column_name],  vmax='p0',color_map=color_for_spots, library_id=str(batch),save=f"_{str(batch)}_{save_path}",colorbar_loc=None,alpha_img= 0.5)
+    access_individual_hotspots.plot_hotspots_by_number(anndata, column_name, batch_single, save_path, color_for_spots)

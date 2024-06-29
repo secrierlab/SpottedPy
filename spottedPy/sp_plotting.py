@@ -35,6 +35,14 @@ from matplotlib.patches import Rectangle
 from matplotlib.patches import Patch
 import matplotlib.patches as mpatches
 from scipy.stats import mannwhitneyu
+import statsmodels.api as sm
+import statsmodels.formula.api as smf
+from scipy.stats import ttest_ind
+from scipy.stats import mannwhitneyu
+from scipy.stats import ks_2samp
+from scipy.stats import combine_pvalues
+
+
 
 # Typing
 from typing import Tuple, List, Optional, Union
@@ -46,6 +54,15 @@ warnings.filterwarnings('ignore', category=UserWarning, module='libpysal')
 #pdf font
 plt.rcParams['pdf.fonttype'] = 'truetype' 
 
+
+def plot_hotspots(anndata, column_name, batch_single, save_path, color_for_spots):
+    if batch_single is not None:
+        data_subset = anndata[anndata.obs['batch'] == str(batch_single)]
+        sc.pl.spatial(data_subset, color=[column_name],  vmax='p0',color_map=color_for_spots, library_id=str(batch_single),save=f"_{save_path}",colorbar_loc=None,alpha_img= 0.5)
+    else:
+        for batch in anndata.obs['batch'].unique():
+            data_subset = anndata[anndata.obs['batch'] == str(batch)]
+            sc.pl.spatial(data_subset, color=[column_name],  vmax='p0',color_map=color_for_spots, library_id=str(batch),save=f"_{str(batch)}_{save_path}",colorbar_loc=None,alpha_img= 0.5)
 
 def custom_color(pvalue):
     """Define custom color based on p-value."""
@@ -96,6 +113,234 @@ def calculate_mean_scores_per_batch(adata, signatures, states_to_loop_through):
                 data_dict[(batch, state, signature)] = scores
                 mean_scores[batch][state][signature] = scores.mean()
     return mean_scores, data_dict
+
+def plot_bubble_plot_mean_distances(distances_df, primary_vars, comparison_vars,normalise_by_row=False,fig_size=(5, 5),save_path=None):
+    # Filter the DataFrame based on the specified primary and comparison variables
+    filtered_df = distances_df[
+        distances_df['primary_variable'].isin(primary_vars) &
+        distances_df['comparison_variable'].isin(comparison_vars)
+    ]
+    mean_df=filtered_df.groupby(['batch','primary_variable', 'hotspot_number']).min_distance.median().reset_index()
+    # Group by primary and comparison variables and calculate the mean distance
+    mean_df = (
+        filtered_df
+        .groupby(['primary_variable', 'comparison_variable'])
+        .min_distance
+        .mean()
+        .reset_index()
+    )
+    #sort by mean distance
+    mean_df=mean_df.sort_values(by='min_distance',ascending=False)
+    #normalise by min_distance
+    if normalise_by_row:
+        mean_df['min_distance']=mean_df['min_distance']/mean_df['min_distance'].max()
+    # Set up the figure and axes
+    plt.figure(figsize=fig_size)
+    with plt.rc_context():
+        scatter = sns.scatterplot(
+            x='primary_variable', 
+            y='comparison_variable', 
+            size='min_distance',
+            sizes=(100, 2000),
+            data=mean_df,
+            hue='min_distance',
+            palette="viridis",
+            legend=False
+        )
+        # Set plot limits
+        plt.xlim(-0.5, len(primary_vars) - 0.5)
+        plt.ylim(-0.5, len(comparison_vars) - 0.5)
+        # Set plot title and labels
+        plt.title("Mean Distances", fontsize=15)
+        plt.xlabel("Primary Variable")
+        plt.ylabel("Comparison Variable")
+        
+        # Set x-axis tick rotation and tick label size
+        plt.xticks(rotation=45, ha='right')
+        plt.tick_params(axis='both', which='major', labelsize=15)
+
+        #add rotation to y axis
+        #plt.yticks(rotation=-45, ha='right')
+
+        # Adjust plot layout and show plot
+        plt.tight_layout()
+        if save_path is not None:
+            plt.savefig(save_path, dpi=300)
+        plt.show()
+        plt.close()
+
+def plot_custom_scatter(data, primary_vars, comparison_vars, fig_size, bubble_size, file_save,sort_by_difference, compare_distribution_metric, statistical_test):
+
+    # Set plot style and font
+    sns.set_style("white")
+    plt.rcParams['font.family'] = 'Arial'
+    plt.rcParams['font.size'] = 10
+
+    if compare_distribution_metric not in [None, 'min', 'mean', 'median', 'ks_test']:
+        raise ValueError("compare_distribution_metric must be one of 'min', 'mean', 'median' or 'ks_test'.")
+
+    if compare_distribution_metric is None:
+        # Filter the data
+        filtered_df = data[data['primary_variable'].isin(primary_vars)]
+        filtered_df = filtered_df[filtered_df['comparison_variable'].isin(comparison_vars)]
+        mean_df = (filtered_df.groupby(['primary_variable', 'comparison_variable'])
+                .min_distance.mean()
+                .reset_index())
+        comparison_var_one = primary_vars[0]
+        comparison_var_two = primary_vars[1]
+        # Calculate differences and p-values
+        pivot_df = mean_df.pivot(index='comparison_variable', columns='primary_variable', values='min_distance')
+        pivot_df['difference'] = pivot_df[comparison_var_one] - pivot_df[comparison_var_two]
+        pivot_df = pivot_df.reset_index()
+        pivot_df['p_value'] = pivot_df['comparison_variable'].apply(lambda x: calculate_pvalue(x, comparison_var_one, comparison_var_two, filtered_df))
+        pivot_df['color'] = pivot_df['p_value'].apply(custom_color)
+        # Sort the DataFrame
+        if sort_by_difference:
+            pivot_df = pivot_df.reindex(pivot_df['difference'].abs().sort_values(ascending=False).index)
+        else:
+            #make comparison_variable a categorical variable
+            pivot_df['comparison_variable'] = pd.Categorical(pivot_df['comparison_variable'], categories=comparison_vars, ordered=True)
+            pivot_df.sort_values(by='comparison_variable', inplace=True)
+
+    #test different metric of distance distributions.. min, median, mean
+    #df with index as comparison_variable, column as primary_variable, and dufference as coefficient and p_value as p_value and sort by coefficient
+    if compare_distribution_metric is not None and compare_distribution_metric in ['mean', 'median', 'min']:
+        results_df = pd.DataFrame(columns=['comparison_variable', 'coefficient', 'p_value'])
+
+        for comp_var in comparison_vars:
+            comparison_var_two = primary_vars[1]
+            comparison_var_one = primary_vars[0]
+            #filter for comp_var
+            distance_vals_filtered=data[data['comparison_variable']==comp_var].copy()
+
+            distance_vals_filtered.loc[:, 'batch'] = distance_vals_filtered['batch'].astype('category')
+            #if compare_distribution_metric is mean, median or min ensure there are multiple batches, otherwise not enough power
+            if len(distance_vals_filtered['batch'].unique())<2:
+                #raise error
+                raise ValueError("Not enough slides to perform statistical test. Requires more than one slide. Otherwise, use all distances from hotspot by setting compare_distribution_metric=None.")
+            if compare_distribution_metric=="mean":
+                min_distances = distance_vals_filtered.groupby(['batch','primary_variable', 'hotspot_number']).min_distance.mean().reset_index()
+            if compare_distribution_metric=="median":
+                min_distances = distance_vals_filtered.groupby(['batch','primary_variable', 'hotspot_number']).min_distance.median().reset_index()
+            if compare_distribution_metric=="min":
+                min_distances = distance_vals_filtered.groupby(['batch','primary_variable', 'hotspot_number']).min_distance.min().reset_index()
+
+
+            model_formula = f"min_distance ~ C(primary_variable, Treatment(reference='{comparison_var_two}'))"
+            model = smf.gee(
+                model_formula,
+                "batch",  
+                data=min_distances,
+                family=sm.families.Gaussian()
+            )
+            result = model.fit()
+            coef_key = f'C(primary_variable, Treatment(reference=\'{comparison_var_two}\'))[T.{comparison_var_one}]'
+
+            coefficient = result.params.get(coef_key)
+            p_value = result.pvalues.get(coef_key)
+            # Append results to the DataFrame
+            new_row = pd.DataFrame([{
+                'comparison_variable': comp_var,
+                'difference': coefficient,
+                'p_value': p_value
+            }])
+            results_df = pd.concat([results_df, new_row], ignore_index=True)
+
+            #calcluate color
+            results_df['color'] = results_df['p_value'].apply(custom_color)
+
+        if sort_by_difference:
+            pivot_df=results_df.reindex(results_df['difference'].abs().sort_values(ascending=False).index)
+        else: 
+            results_df['comparison_variable'] = pd.Categorical(results_df['comparison_variable'], categories=comparison_vars, ordered=True)
+            # Sort by the column
+            results_df.sort_values(by='comparison_variable', inplace=True)
+            pivot_df=results_df
+            #sort by coefficient
+    #Kolmogorov-Smirnov Test to analyse how different the distance distributions are, but note: this doesnt compare at the hotspot level
+    if compare_distribution_metric=="ks_test":
+        results_df = pd.DataFrame(columns=['comparison_variable', 'coefficient', 'p_value'])
+        for comp_var in comparison_vars:
+            comparison_var_two = primary_vars[1]
+            comparison_var_one = primary_vars[0]
+            # Filter data for comp_var
+            distance_vals_filtered = data[data['comparison_variable'] == comp_var]
+            distance_vals_filtered.loc[:, 'batch'] = distance_vals_filtered['batch'].astype('category')
+
+            # List to store results for combining later
+            ks_statistics = []
+            p_values = []
+            # Perform KS test for each batch and primary variable pair
+            for batch in distance_vals_filtered['batch'].cat.categories:
+                batch_data = distance_vals_filtered[distance_vals_filtered['batch'] == batch]
+                data1 = batch_data[batch_data['primary_variable'] == comparison_var_one]['min_distance']
+                data2 = batch_data[batch_data['primary_variable'] == comparison_var_two]['min_distance']
+                statistic, p_value = mannwhitneyu(data1, data2, alternative='less')
+
+                #ks_statistic, p_value = stats.ks_2samp(data1, data2)
+                ks_statistics.append(statistic)
+                p_values.append(p_value)
+            # Combine results across batches
+            average_ks = np.mean(ks_statistics)
+            combined_p_value = stats.combine_pvalues(p_values, method='fisher')[1]  # Using Fisher's method
+            
+            # Append results to the DataFrame
+            results_df = results_df.append({
+                'comparison_variable': comp_var,
+                'difference': average_ks,  # Using average KS as the 'difference'
+                'p_value': combined_p_value
+            }, ignore_index=True)
+            
+            # Calculate color based on p-value
+        results_df['color'] = results_df['p_value'].apply(custom_color)  
+        if sort_by_difference:
+            pivot_df=results_df.reindex(results_df['difference'].abs().sort_values(ascending=False).index)
+        else: 
+            results_df['comparison_variable'] = pd.Categorical(results_df['comparison_variable'], categories=comparison_vars, ordered=True)
+# Sort by the column
+            results_df.sort_values(by='comparison_variable', inplace=True)
+            pivot_df=results_df
+
+    # Plot the data
+    # Plot the data
+    plt.figure(figsize=fig_size)
+    ax = sns.scatterplot(x='comparison_variable', y='difference', size=1,
+                        sizes=bubble_size, data=pivot_df, hue='color', 
+                        palette={'#D53E4F': '#D53E4F', '#FDAE61': '#FDAE61', '#FEE08B': '#FEE08B', '#E6F598': '#E6F598','#DED9A9':'#DED9A9'}, 
+                        legend=None)
+    plt.axhline(0, color='gray', linestyle='--')
+    plt.ylabel('Closer to\n{} ←→ {}'.format(comparison_var_one, comparison_var_two))
+    plt.xticks(rotation=90, ha='right', rotation_mode='anchor')
+    plt.tick_params(axis='x', which='both', direction='in', length=6, width=2)    
+    legend_elements = [Line2D([0], [0], marker='o', color='w', label='p < 0.001', markersize=10, markerfacecolor='#D53E4F'),
+                       Line2D([0], [0], marker='o', color='w', label='p < 0.01', markersize=10, markerfacecolor='#FDAE61'),
+                       Line2D([0], [0], marker='o', color='w', label='p < 0.05', markersize=10, markerfacecolor='#FEE08B'),
+                       Line2D([0], [0], marker='o', color='w', label='p < 0.1', markersize=10, markerfacecolor='#DED9A9'),
+                       Line2D([0], [0], marker='o', color='w', label='p >= 0.05', markersize=10, markerfacecolor='#E6F598')]
+    plt.legend(handles=legend_elements, loc='lower right')
+    sns.despine()
+    # Save the plot
+    if file_save: 
+        plt.savefig(f"{file_save}_scatterplot_hallmarks.pdf", dpi=300)
+    plt.show()
+    if statistical_test:
+        return results_df
+    
+def plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size):
+    #filter distances by primary_variable and comparison_variable
+    filtered_df = distances[
+        distances['primary_variable'].isin(primary_variables) &
+        distances['comparison_variable'].isin(comparison_variables)
+    ]
+    
+    #plot boxplot of min_distance
+    for comparison_variable in comparison_variables:
+        fig, ax = plt.subplots(figsize=fig_size)
+        sns.boxplot(data=filtered_df[filtered_df['comparison_variable'] == comparison_variable],
+                    x='primary_variable', y='min_distance', ax=ax,palette='viridis')
+        ax.set_title(comparison_variable)
+        ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
+        plt.show()
 
 # Create a DataFrame for heatmap with states as rows and signatures as columns; helper function
 def create_heatmap_data(mean_scores, states_to_loop_through, signatures):
@@ -161,6 +406,28 @@ def plot_heatmap(data_for_heatmap_normalized, signatures, states_to_loop_through
     ax.set_aspect('equal')
     plt.show()
 
+def plot_gene_heatmap(adata, signatures, states_to_loop_through, plot_score=False, normalize_values=False,fig_size=(5, 5),
+                      score_by_batch=False,save_path=None):
+    # Calculate mean scores for each state and signature.
+    if score_by_batch:
+        # Calculate mean scores for each state and signature.
+        mean_scores, data_dict = calculate_mean_scores_per_batch(adata, signatures, states_to_loop_through)
+        data_for_heatmap = create_heatmap_data_per_batch(mean_scores, states_to_loop_through, signatures)
+    else:
+         # Calculate mean scores for each state and signature within each batch.
+        mean_scores, data_dict = calculate_mean_scores(adata, signatures, states_to_loop_through)
+        # Create a DataFrame for heatmap with states as rows and signatures as columns.
+        data_for_heatmap = create_heatmap_data(mean_scores, states_to_loop_through, signatures)
+
+    # Normalize the data for heatmap if required.
+    if normalize_values:
+        data_for_heatmap = normalize_heatmap_data(data_for_heatmap)
+    # Plot the heatmap using the normalized data.
+    plot_heatmap(data_for_heatmap, signatures, states_to_loop_through, fig_size,plot_score,save_path)
+
+    return data_for_heatmap
+
+
     #helper function
 def calculate_signature_differences(anndata_breast, gene_signatures, states):
     """
@@ -186,6 +453,26 @@ def calculate_signature_differences(anndata_breast, gene_signatures, states):
             'Pvalue': pvalue
         }) 
     return pd.DataFrame(results)
+
+def plot_signature_boxplot(anndata_breast,hotspot_variable,signature,fig_size,file_save):
+    hot_data = anndata_breast.obs[~anndata_breast.obs[hotspot_variable[0]].isna()][signature]
+    cold_data = anndata_breast.obs[~anndata_breast.obs[hotspot_variable[1]].isna()][signature]
+    # Plotting
+    data = pd.DataFrame({
+    hotspot_variable[0]: hot_data,
+    hotspot_variable[1]: cold_data
+    })
+
+    # Melting the DataFrame to long format for seaborn
+    data_melted = data.melt(var_name='Hotspot', value_name='Response to Checkpoint Score')
+    # Plotting
+    plt.figure(figsize=fig_size)
+    sns.boxplot(x='Hotspot', y='Response to Checkpoint Score', data=data_melted, showfliers=False)
+    plt.title('Response to Checkpoint Genes based on EMT Hallmarks')
+    plt.ylabel('Response to Checkpoint Score')
+    if file_save: 
+        plt.savefig(f"{file_save}_overall_comparison.pdf", dpi=300)
+    plt.show()
 
 #helper function
 def plot_bubble_chart(data, states, fig_size, bubble_size):
@@ -439,3 +726,126 @@ def plot_results_gene_signatures_heatmap(adata_vis, variable_one, comparison_var
     plt.savefig(path, bbox_inches='tight')
     plt.show()
     plt.close()
+
+def plot_bubble_chart_by_batch(df, primary_variable_value, comparison_variable_values, reference_variable='tumour_cells', save_path=None, pval_cutoff=0.05, fig_size=(12,10),bubble_size=20,slide_order=None):
+    """
+    Plot a bubble chart showing the relationship between EMT variables and TME variables.
+
+    Parameters:
+    df (DataFrame): The distance df containing the distances to be plotted. Calculated from calculateDistances(). Primary variables should be in the 'primary_variable' column, 
+    comparison variables should be in the 'comparison_variable' column, and distances should be in the 'min_distance' column.
+    primary_variable_value (str): The primary variable of interest we want to comparise distances FROM (e.g., 'EMT_hallmarks_hot').
+    comparison_variable_values (list): List of TME variables to include in the plot.
+    reference_variable (str): The reference variable for comparison (default is 'tumour_cells'). Allows us to statistically compare distance distributions.
+    save_path (str): Path to save the plot image. If None, the plot is not saved.
+    pval_cutoff (float): P-value cutoff for significance (default is 0.05).
+    fig_size (tuple): Size of the figure (default is (12,10)).
+
+    Returns:
+    DataFrame: The grouped and processed DataFrame used for plotting.
+    """
+    # Prepare the data for plotting
+    grouped_data = prepare_data_hotspot(df, primary_variable_value, comparison_variable_values,reference_variable)
+    fig, ax = plt.subplots(figsize=fig_size)
+    slides = df['batch'].unique()
+
+    if slide_order:
+        slide_positions = slide_order
+    else:
+        slide_positions = {slide: idx for idx, slide in enumerate(slides)}
+        
+    # Bonferroni correction
+    n_tests = len(slides)
+    bonferroni_alpha = pval_cutoff / n_tests
+    # Iterate through the grouped data and plot each point
+    for idx, row in grouped_data.iterrows():
+        if row['primary_variable'] != reference_variable:
+            # Determine position and color based on data values
+            y_pos = slide_positions.get(row['batch'], 0)
+            color = 'blue' if row['Difference'] > 0 else 'red'
+            alpha = 1 if row['Pvalue'] < bonferroni_alpha else 0  # Transparency based on significance
+            # Plot the bubble
+            ax.scatter(row['comparison_variable'], y_pos, s=abs(row['Difference'])*bubble_size, color=color, alpha=alpha, edgecolors='white', linewidth=0.3)
+    ax.set_yticks(list(slide_positions.values()))
+    ax.set_yticklabels(list(slide_positions.keys()))
+    labels=grouped_data['comparison_variable'].unique()
+    ax.set_xticklabels(labels, rotation=90)
+
+    #ax.set_xticklabels([label for label in comparison_variable_values], rotation=90)
+    red_patch = mpatches.Patch(color='red', label='Closer to {}'.format(primary_variable_value))
+    blue_patch = mpatches.Patch(color='blue', label='Closer to {}'.format(reference_variable))
+
+    # Place the legend at the top of the figure
+    ax.legend(handles=[red_patch, blue_patch], loc='lower center', bbox_to_anchor=(0.5, 1.05), ncol=2, borderaxespad=0.)
+
+    # Adjust layout to make room for the legend
+    plt.tight_layout(rect=[0, 0, 1, 0.95])
+
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    plt.show()
+    # Return the processed DataFrame
+    return grouped_data
+
+
+def plot_correlation_coefficients_bar_chart(correlation_dict,ring_value,variable_to_compare,save_path=None,fig_size=(10,8)):
+    """
+    Plots a bar chart of correlation coefficients for a specified variable compared across different metrics.
+
+    Parameters:
+    - correlation_dict (dict): Dictionary containing correlation data for various ring sizes.
+    - ring_value (str): The key within 'results' dict that refers to a specific set of correlation data.
+    - variable_to_compare (str): The specific variable within the ring data to compare across metrics.
+    """
+
+    series=correlation_dict[ring_value][variable_to_compare]
+    try:
+        series = series.drop(index=variable_to_compare)
+    #if the row does not exist, pass
+    except:
+        pass
+    # Sort series by absolute values while preserving the sign
+    sorted_series = series.sort_values(ascending=False) 
+
+    # Plot
+    plt.figure(figsize=fig_size)
+    sorted_series.plot(kind='bar', color=sorted_series.map(lambda x: 'g' if x > 0 else 'r'))
+    plt.axhline(0, color='black', linewidth=0.8)
+    plt.title('Bar Chart of Values Ranked by Correlation Coefficient')
+    if save_path:
+        plt.savefig(save_path, bbox_inches='tight')
+    else:
+        plt.show()
+
+def plot_correlation_coefficients_heatmap(correlation_dict, correlation_variable, save_path=None,fig_size=(15, 6)):
+    """
+    Plots a bar heatmap correlation coefficients for different ring sizes
+
+    Parameters:
+    - correlation_dict (dict): Dictionary containing correlation data for various ring sizes.
+    - save_path (str): Path to save the heatmap image. If None, the heatmap is not saved.
+    - correlation_variable (str): The specific variable  to compare across.
+    """
+    
+    
+    
+    heatmap_data = pd.DataFrame()
+    for ring_value, corr_matrix in correlation_dict.items():
+        # Extract the row for ['0']_inner_values
+        if correlation_variable in corr_matrix.index:
+            heatmap_data[ring_value] = corr_matrix.loc[correlation_variable]
+    # Transpose the DataFrame to have batches as columns and variables as rows
+    heatmap_data = heatmap_data.transpose()
+    # Plotting the heatmap
+    plt.figure(figsize=fig_size)  # Set the figure size as necessary
+    sns.heatmap(heatmap_data, annot=False, cmap='coolwarm', center=0)
+    plt.title("Correlation Heatmap with ['0']_inner_values Across Batches")
+    plt.xlabel("Variables")
+    plt.ylabel("Ring sizes")
+    plt.xticks(rotation=90)  # Rotate variable names for better visibility
+    plt.tight_layout()  # Adjust subplots to fit into figure area.
+    
+    if save_path:
+        plt.savefig(save_path)
+    else:
+        plt.show()
