@@ -33,6 +33,12 @@ and _comparison_variables_ are the hotspots we calculate distances to.
 
 •    _sp.sensitivity_calcs_ performs the sensitivity analysis to evaluate the impact of varying hotspot sizes on the spatial relationships by  incrementally adjusting the neighbourhood parameter or p-value for the Getis-Ord statistic. 
 
+•    _sp.plot_distance_distributions_across_batches_ plots all the distances from the two comparison hotspots of interest across each slide.
+
+•    _sp.access_individual_hotspots_ plots the distances of each hotspot for one slide between two comparison hotspots. Useful to assess heterogeneity of relationships. 
+
+•    _sp.plot_hotspots_by_number_ plots the unique hotspot numbers across all slides. 
+
 •    _sp.calculate_inner_outer_correlations_ (Inner outer correlation) calculated by correlating signatures across a central spot of interest and the direct neighbourhood of spots surrounding it. set rings_range to calculate how the correlation changes as you expand ring surrounding a spot. 
 
 •    _sp.calculate_neighbourhood_correlation_ function correlates phenotypes with cells within a spot/spatial unit. rings_range sets the number of rings.
