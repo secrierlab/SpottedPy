@@ -16,12 +16,12 @@ SpottedPy is a Python package for analysing signatures in spatial transcriptomic
 
 ## Getting Started
 
-To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tutorial walks through using SpottedPy with multiple spatial slides, highly recommended for downstream statistical analysis). spottedpy_tutorial_sample_dataset.ipynb tutorial walks through using SpottedPy with a single slide. 
+To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tutorial walks through using SpottedPy with multiple spatial slides, highly recommended for downstream statistical analysis). If only one slide is required, follow spottedpy_tutorial_sample_dataset.ipynb tutorial (not recommended for statistical downstream test, but allows for visualisation of hotspots). 
 
-Key functions: 
-•    _ sp.create_hotspots_ creates hotspots from anndata, specify in the filter_columns parameter what region within the spatial slide to calculate the hotspot from e.g. tumour cells. The neighourhood_parameter can be altered here (default=10). _relative_to_batch_ parameter ensures hotspots are calculated across each slide, otherwise they are calculated across multiple slides. Importantly, if multiple slides are used (highly recommended for statistical power), these should be labelled using .obs[‘batch’] within the anndata object. Additionally, the library ID in the .uns data slot should be labelled with the .obs[‘batch’] value. 
+Key functions are in spottedpy.py: 
+•    _sp.create_hotspots_ creates hotspots from anndata, specify in the filter_columns parameter what region within the spatial slide to calculate the hotspot from e.g. tumour cells. The neighourhood_parameter can be altered here (default=10). _relative_to_batch_ parameter ensures hotspots are calculated across each slide, otherwise they are calculated across multiple slides. Importantly, if multiple slides are used (highly recommended for statistical power), these should be labelled using .obs[‘batch’] within the anndata object. Additionally, the library ID in the .uns data slot should be labelled with the .obs[‘batch’] value. 
 
-•   _ sp.plot_hotspots_ plots hotspots.
+•   _sp.plot_hotspots_ plots hotspots.
 
 •    _sp.calculateDistances_ calculates the Euclidean distances from a spot h in H hotspot to the hotspot of interest.  _primary_variables_ are the hotspots we calculate distances from
 and _comparison_variables_ are the hotspots we calculate distances to.
@@ -36,7 +36,7 @@ and _comparison_variables_ are the hotspots we calculate distances to.
 
 •    _sp.calculate_neighbourhood_correlation_ function correlates phenotypes with cells within a spot/spatial unit. rings_range sets the number of rings.
 
-•    _sp.correlation_heatmap_neighbourhood_ and sp.plot_overall_change plot the neighbourhood results.
+•    _sp.correlation_heatmap_neighbourhood_ and _sp.plot_overall_change_ plot the neighbourhood results.
 
 
 ### Package pre-requisites
