@@ -19,6 +19,7 @@ SpottedPy is a Python package for analysing signatures in spatial transcriptomic
 To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tutorial walks through using SpottedPy with multiple spatial slides, highly recommended for downstream statistical analysis). If only one slide is required, follow spottedpy_tutorial_sample_dataset.ipynb tutorial (not recommended for statistical downstream test, but allows for visualisation of hotspots). 
 
 Key functions are in spottedpy.py: 
+
 •    _sp.create_hotspots_ creates hotspots from anndata, specify in the filter_columns parameter what region within the spatial slide to calculate the hotspot from e.g. tumour cells. The neighourhood_parameter can be altered here (default=10). _relative_to_batch_ parameter ensures hotspots are calculated across each slide, otherwise they are calculated across multiple slides. Importantly, if multiple slides are used (highly recommended for statistical power), these should be labelled using .obs[‘batch’] within the anndata object. Additionally, the library ID in the .uns data slot should be labelled with the .obs[‘batch’] value. 
 
 •   _sp.plot_hotspots_ plots hotspots.
