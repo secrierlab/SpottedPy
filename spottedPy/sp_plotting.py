@@ -57,11 +57,11 @@ plt.rcParams['pdf.fonttype'] = 'truetype'
 
 def plot_hotspots(anndata, column_name, batch_single, save_path, color_for_spots):
     if batch_single is not None:
-        data_subset = anndata[anndata.obs['batch'] == str(batch_single)]
+        data_subset = anndata[anndata.obs['batch'] == str(batch_single)].copy()
         sc.pl.spatial(data_subset, color=[column_name],  vmax='p0',color_map=color_for_spots, library_id=str(batch_single),save=f"_{save_path}",colorbar_loc=None,alpha_img= 0.5)
     else:
         for batch in anndata.obs['batch'].unique():
-            data_subset = anndata[anndata.obs['batch'] == str(batch)]
+            data_subset = anndata[anndata.obs['batch'] == str(batch)].copy()
             sc.pl.spatial(data_subset, color=[column_name],  vmax='p0',color_map=color_for_spots, library_id=str(batch),save=f"_{str(batch)}_{save_path}",colorbar_loc=None,alpha_img= 0.5)
 
 def custom_color(pvalue):
