@@ -16,7 +16,7 @@ SpottedPy is a Python package for analysing signatures in spatial transcriptomic
 
 ## Getting Started
 
-To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tutorial walks through using SpottedPy with multiple spatial slides, highly recommended for downstream statistical analysis). If only one slide is required, follow spottedpy_tutorial_sample_dataset.ipynb tutorial (not recommended for statistical downstream test, but allows for visualisation of hotspots). 
+To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tutorial walks through using SpottedPy with multiple spatial slides, highly recommended for downstream statistical analysis). If only one slide is available, follow spottedpy_tutorial_sample_dataset.ipynb tutorial (not recommended for statistical downstream test, but allows for visualisation of hotspots). 
 
 Key functions are in spottedpy.py, which calls functions from the other python files: 
 
@@ -52,7 +52,7 @@ Download scanpy, libpysal, esda.
 
 ### Data
 
-Download sample breast cancer spatial transcriptomics data at this [Zenodo repository](https://doi.org/10.5281/zenodo.10392317). anndata_one_slide_tutorial.h5ad contains a smaller anndata object to be run using spottedpy_tutorial_sample_dataset.ipynb tutorial. 
+Download sample breast cancer spatial transcriptomics data at this [Zenodo repository](https://zenodo.org/records/12593757) for the spottedpy_multiple_slides tutorial (recommended).  [Zenodo repository](https://doi.org/10.5281/zenodo.10392317) contains anndata object for spottedpy_tutorial_sample_dataset.ipynb tutorial. 
 
 ## Contributing
 
