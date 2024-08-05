@@ -29,11 +29,16 @@ def plot_distance_distributions_across_batches(df, comparison_variable,fig_size,
         plt.savefig(fig_name)
     plt.show()
 
-
 def plot_distance_distributions_across_hotspots(df, comparison_variable,batch,fig_size=(3, 5),fig_name=None):  
     df=df[df['comparison_variable']==comparison_variable]
     df=df[df['batch']==batch]
+    
+    #append primary_variable to end of hotspot_number
+    df['hotspot_number'] = df['hotspot_number'].astype(str) + '_' + df['primary_variable']
+    #remove "_hot" from hotspot_number
+    df['hotspot_number']=df['hotspot_number'].str.replace("_hot","")
     df['hotspot_suffix'] = df['hotspot_number'].apply(lambda x: x.split('_')[-1])
+
 
     # Sort DataFrame by the helper column and then by hotspot_number
     df = df.sort_values(by=['hotspot_suffix', 'hotspot_number'])# Get unique primary variables and create a color palette
@@ -66,6 +71,8 @@ def plot_distance_distributions_across_hotspots(df, comparison_variable,batch,fi
     if fig_name:
         plt.savefig(fig_name)
     plt.show()
+
+
 
 
 def plot_hotspots_by_number(

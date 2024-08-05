@@ -53,8 +53,8 @@ def calculate_hotspots_with_hotspots_numbered(
     anndata_filtered=anndata_filtered.copy()
     anndata_filtered.obs[score_column + "_hot"] = np.nan
     anndata_filtered.obs[score_column + "_cold"] = np.nan
-    anndata_filtered.obs[score_column + "_hot_number"]=np.nan
-    anndata_filtered.obs[score_column + "_cold_number"]=np.nan
+    anndata_filtered.obs[score_column + "_hot_number"]=""
+    anndata_filtered.obs[score_column + "_cold_number"]=""
 
     #convert score_column to float64 in anndata_filtered
     anndata_filtered.obs[score_column] = anndata_filtered.obs[score_column].astype('float64')
@@ -171,8 +171,8 @@ def create_hotspots(anndata, column_name, filter_columns, filter_value, neighbou
         #fill with nans
         anndata.obs[column_name + "_hot"]=np.nan
         anndata.obs[column_name + "_cold"]=np.nan
-        anndata.obs[column_name + "_hot_number"]=np.nan
-        anndata.obs[column_name + "_cold_number"]=np.nan
+        anndata.obs[column_name + "_hot_number"]=""
+        anndata.obs[column_name + "_cold_number"]=""
         anndata.obs.loc[anndata_filtered.obs.index, column_name + "_hot"] = anndata_filtered.obs[column_name + "_hot"]
         anndata.obs.loc[anndata_filtered.obs.index, column_name + "_cold"] = anndata_filtered.obs[column_name + "_cold"]
         col_name=column_name + "_hot_number"

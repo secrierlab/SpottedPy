@@ -171,6 +171,9 @@ def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_
         fig_size (tuple, optional): The size of the figure for the scatter plot. Defaults to (10, 5).
         bubble_size (tuple, optional): The size of the bubbles in the scatter plot. Defaults to (700, 700).
         file_folder (Optional[str], optional): If provided, specifies the file path where the plot will be saved. If None, the plot will not be saved. Defaults to None. 
+        compare_distribution_metric (Optional[str], optional): The metric to use for comparing the distribution of distances. Defaults to None. Options:  None, 'min', 'mean', 'median', 'ks_test','median_across_all_batches' is simplest approach (looks at all hotspots across batches, without weighting by batch ie. can be biased towards batches with more hotspots.)
+        Please see paper for further description of these options. e.g. min means out of all distances from primary variable hotspot of interest, compare the minimum distance to hotspot of comparison variable.
+        statistical_test (bool, optional): Whether to return df for further analysis.
     
     This function filters the data based on the specified primary and comparison variables, calculates mean distances, and plots these distances in a scatter plot. The plot illustrates the differences in distances between two primary variables across various comparison variables, with bubble size and color indicating statistical significance.
     """

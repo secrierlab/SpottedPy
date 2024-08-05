@@ -76,7 +76,7 @@ def custom_color(pvalue):
         return "#DED9A9" #  (Not significant)
     else:#pvalue > 0.1:
         return "#E6F598"  # Light Green (Not significant)
-
+###custom scatter plot
 def calculate_pvalue(tme_var, emt_var_one, emt_var_two, df):
     """Calculate p-value between two groups."""
     group1 = df[(df['comparison_variable'] == tme_var) & (df['primary_variable'] == emt_var_one)]['min_distance']
@@ -169,15 +169,16 @@ def plot_bubble_plot_mean_distances(distances_df, primary_vars, comparison_vars,
         plt.show()
         plt.close()
 
-def plot_custom_scatter(data, primary_vars, comparison_vars, fig_size, bubble_size, file_save,sort_by_difference, compare_distribution_metric, statistical_test):
 
+
+def plot_custom_scatter(data, primary_vars, comparison_vars, fig_size, bubble_size, file_save,sort_by_difference, compare_distribution_metric, statistical_test):
     # Set plot style and font
     sns.set_style("white")
     plt.rcParams['font.family'] = 'Arial'
     plt.rcParams['font.size'] = 10
-
-    if compare_distribution_metric not in [None, 'min', 'mean', 'median', 'ks_test']:
-        raise ValueError("compare_distribution_metric must be one of 'min', 'mean', 'median' or 'ks_test'.")
+    
+    if compare_distribution_metric not in [None, 'min', 'mean', 'median', 'ks_test','median_across_all_batches']:
+        raise ValueError("compare_distribution_metric must be one of 'min', 'mean', 'median','median_across_all_batches' or 'ks_test'.")
 
     if compare_distribution_metric is None:
         # Filter the data
@@ -257,6 +258,41 @@ def plot_custom_scatter(data, primary_vars, comparison_vars, fig_size, bubble_si
             results_df.sort_values(by='comparison_variable', inplace=True)
             pivot_df=results_df
             #sort by coefficient
+
+    ###simplest approach; compare the medians of all hotspots within all batches
+    if compare_distribution_metric== "median_across_all_batches":
+        comparison_var_one = primary_vars[0]
+        comparison_var_two = primary_vars[1]
+        filtered_df = data[data['primary_variable'].isin([comparison_var_one, comparison_var_two])]
+        # Group by 'comparison_variable', 'primary_variable', and 'hotspot_number' and calculate the median 'min_distance'
+        median_distances = filtered_df.groupby(["primary_variable","hotspot_number",'comparison_variable'])['min_distance'].median().reset_index()
+        #now calculate min_distance for each primary_variable and comparison_variable
+        median_distances_group_hotspots = median_distances.groupby(["primary_variable","comparison_variable",])['min_distance'].median().reset_index()
+        # Pivot the data to have 'EMT_hallmarks_hot' and 'EMT_hallmarks_cold' as columns
+        pivot_df = median_distances_group_hotspots.pivot_table(index=['comparison_variable'], columns='primary_variable', values='min_distance').reset_index()
+        pivot_df['difference']=pivot_df[comparison_var_one]-pivot_df[ comparison_var_two]
+        # Perform a t-test between 'EMT_hallmarks_hot' and 'EMT_hallmarks_cold' for each 'comparison_variable'
+        ttest_results = {}
+        for comparison_variable in median_distances['comparison_variable'].unique():
+            comp_df = median_distances[median_distances['comparison_variable'] == comparison_variable]
+            hot_values=comp_df[comp_df['primary_variable'] == comparison_var_one]
+            cold_values = comp_df[comp_df['primary_variable'] ==  comparison_var_two]
+            t_stat, p_val = ttest_ind(hot_values['min_distance'], cold_values['min_distance'])
+            ttest_results[comparison_variable] = {'t_stat': t_stat, 'p_val': p_val}
+        # Convert t-test results into a DataFrame
+        ttest_df = pd.DataFrame.from_dict(ttest_results, orient='index').reset_index()
+        ttest_df.columns = ['comparison_variable', 't_stat', 'p_value']
+        # Merge the t-test results with the pivot_df
+        results_df = pd.merge(pivot_df, ttest_df, on='comparison_variable', how='left')
+        results_df['color'] = results_df['p_value'].apply(custom_color)  
+        if sort_by_difference:
+            pivot_df=results_df.reindex(results_df['difference'].abs().sort_values(ascending=False).index)
+        else: 
+            results_df['comparison_variable'] = pd.Categorical(results_df['comparison_variable'], categories=comparison_vars, ordered=True)
+            # Sort by the column
+            results_df.sort_values(by='comparison_variable', inplace=True)
+            pivot_df=results_df
+
     #Kolmogorov-Smirnov Test to analyse how different the distance distributions are, but note: this doesnt compare at the hotspot level
     if compare_distribution_metric=="ks_test":
         results_df = pd.DataFrame(columns=['comparison_variable', 'coefficient', 'p_value'])
@@ -321,7 +357,7 @@ def plot_custom_scatter(data, primary_vars, comparison_vars, fig_size, bubble_si
     sns.despine()
     # Save the plot
     if file_save: 
-        plt.savefig(f"{file_save}_scatterplot_hallmarks.pdf", dpi=300)
+        plt.savefig(f"{file_save}_scatterplot_hallmarks.pdf", dpi=300,bbox_inches='tight')
     plt.show()
     if statistical_test:
         return results_df
