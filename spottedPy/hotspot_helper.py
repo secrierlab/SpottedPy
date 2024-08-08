@@ -40,7 +40,7 @@ def calculate_hotspots_with_hotspots_numbered(
     anndata_filtered: AnnData,
     significance_level: float = 0.05,
     score_column: str = 'scores',
-    neighbours_param: int = 5,
+    neighbours_param: int = 8,
     return_number_components: bool = False,
     hotspots_relative_to_batch: bool = True,
     add_hotspot_numbers: bool = False,
