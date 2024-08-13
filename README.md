@@ -20,7 +20,9 @@ To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tu
 
 Key functions are in spottedpy.py, which calls functions from the other python files: 
 
-•    _sp.create_hotspots_ creates hotspots from anndata, specify in the filter_columns parameter what region within the spatial slide to calculate the hotspot from e.g. tumour cells. The neighourhood_parameter can be altered here (default=10). _relative_to_batch_ parameter ensures hotspots are calculated across each slide, otherwise they are calculated across multiple slides. Importantly, if multiple slides are used (highly recommended for statistical power), these should be labelled using .obs[‘batch’] within the anndata object. Additionally, the library ID in the .uns data slot should be labelled with the .obs[‘batch’] value. 
+•    _sp.create_hotspots_ creates hotspots from anndata, specify in the filter_columns parameter what region within the spatial slide to calculate the hotspot from e.g. tumour cells. The neighourhood_parameter can be altered here (default=8). _relative_to_batch_ parameter ensures hotspots are calculated across each slide, otherwise they are calculated across multiple slides. Importantly, if multiple slides are used (highly recommended for statistical power), these should be labelled using .obs[‘batch’] within the anndata object. Additionally, the library ID in the .uns data slot should be labelled with the .obs[‘batch’] value. 
+
+We encourage the user to choose the neighbourhood parameter most relevant for their biological question, e.g. interested in local interactions of the signature, or more broader tissue modules. SpottedPy allows the user to perform the sensitivity analysis to observe this affects downstream analysis. We would recommend for Visium starting with parameter (k=8) as this captures all the spots surrounding the central spot. The variables with the most stable relationships across a range of parameters (and therefore scales) is likely one of most interest for further investigation. 
 
 •   _sp.plot_hotspots_ plots hotspots.
 
@@ -52,7 +54,7 @@ Download scanpy, libpysal, esda.
 
 ### Data
 
-Download sample breast cancer spatial transcriptomics data at this [Zenodo repository](https://zenodo.org/records/12593757) for the spottedpy_multiple_slides tutorial (recommended).  [Zenodo repository](https://doi.org/10.5281/zenodo.10392317) contains anndata object for spottedpy_tutorial_sample_dataset.ipynb tutorial. 
+Download sample breast cancer spatial transcriptomics data at this [Zenodo repository](https://zenodo.org/records/13284570) for the spottedpy_multiple_slides tutorial (recommended).  [Zenodo repository](https://doi.org/10.5281/zenodo.10392317) contains anndata object for spottedpy_tutorial_sample_dataset.ipynb tutorial. 
 
 ## Contributing
 
