@@ -218,7 +218,7 @@ def plot_custom_scatter(data, primary_vars, comparison_vars, fig_size, bubble_si
             #if compare_distribution_metric is mean, median or min ensure there are multiple batches, otherwise not enough power
             if len(distance_vals_filtered['batch'].unique())<2:
                 #raise error
-                raise ValueError("Not enough slides to perform statistical test. Requires more than one slide. Otherwise, use all distances from hotspot by setting compare_distribution_metric=None.")
+                raise ValueError("Not enough slides to perform statistical test. Requires more than one slide. Otherwise, group all distances from hotspots by setting compare_distribution_metric to median_across_all_batches")
             if compare_distribution_metric=="mean":
                 min_distances = distance_vals_filtered.groupby(['batch','primary_variable', 'hotspot_number']).min_distance.mean().reset_index()
             if compare_distribution_metric=="median":
