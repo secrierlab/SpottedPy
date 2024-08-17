@@ -20,10 +20,7 @@ SpottedPy is a Python package for analysing signatures in spatial transcriptomic
 # Clone the repository
 git clone https://github.com/secrierlab/SpottedPy.git 
 ```
-and then add the location of this folder in sys.path.append("path/to/cloned spottedpy folder") 
-
-# Navigate to the project directory
-cd your-repo
+and then add the location of this folder in sys.path.append("path/to/cloned spottedpy folder").
 
 To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tutorial walks through using SpottedPy with multiple spatial slides, highly recommended for downstream statistical analysis). If only one slide is available, follow spottedpy_tutorial_sample_dataset.ipynb tutorial (not recommended for statistical downstream test, but allows for visualisation of hotspots). 
 
