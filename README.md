@@ -13,6 +13,9 @@ SpottedPy is a Python package for analysing signatures in spatial transcriptomic
 
 •    Our study analyses relationships using varied spatial scales, ranging from neighbourhood enrichment to hotspots. This variety allows for a deeper understanding of the scale at which these spatial relationships manifest.
 
+•    SpottedPy can be used on any spatial transcriptomic data in an anndata format e.g. Visium, Xenium
+
+
 
 ## Getting Started
 
