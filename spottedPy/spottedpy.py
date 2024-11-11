@@ -49,6 +49,7 @@ from scipy.stats import mannwhitneyu
 from esda import fdr
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning, module='libpysal')
+warnings.filterwarnings("ignore", category=UserWarning, message="Setting element `.obsp['spatial_connectivities']` of view, initializing view as actual.")
 
 #pdf font
 plt.rcParams['pdf.fonttype'] = 'truetype'    
@@ -62,6 +63,7 @@ import neighbourhood_allinone_helper as neighbourhood_allinone_helper
 import neighbourhood_inner_outer_helper as neighbourhood_inner_outer_helper
 import neighbourhood_plotting as neighbourhood_plotting
 import access_individual_hotspots as access_individual_hotspots
+
 
 
 ######################################################################################## key hotspot functionality ################################################################################################################################################################################
@@ -158,8 +160,8 @@ def plot_bubble_plot_mean_distances(distances_df, primary_vars, comparison_vars,
 
 
 def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_vars: List[str], fig_size: tuple = (10, 5),
-                        bubble_size: tuple=(700, 700), file_save: bool = False,sort_by_difference: bool =True, 
-                        compare_distribution_metric: Optional[str] = None, statistical_test: bool =False) -> None:
+                        bubble_size: tuple=(700, 700),sort_by_difference: bool =True, 
+                        compare_distribution_metric: Optional[str] = None, statistical_test: bool =False,save_path=None) -> None:
     """
     Plots a custom scatter plot comparing distances between two primary variables.
 
@@ -177,12 +179,12 @@ def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_
     
     This function filters the data based on the specified primary and comparison variables, calculates mean distances, and plots these distances in a scatter plot. The plot illustrates the differences in distances between two primary variables across various comparison variables, with bubble size and color indicating statistical significance.
     """
-    spl.plot_custom_scatter(data, primary_vars, comparison_vars, fig_size, bubble_size, file_save,sort_by_difference, compare_distribution_metric, statistical_test)
+    spl.plot_custom_scatter(data, primary_vars, comparison_vars, fig_size, bubble_size,sort_by_difference, compare_distribution_metric, statistical_test,save_path)
 
 
 #for each comparison variable plot box plots of the distribution of min_distance for each primary variable
-def plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size):
-    spl.plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size)
+def plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size,save_path):
+    spl.plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size,save_path)
 
 ######################################################################################## hotspot heatmaps #######################################################################################################################################
 
@@ -235,7 +237,7 @@ def compare_gene_signatures(anndata_breast, gene_signatures, states, fig_size=(5
 
 
 
-def plot_signature_boxplot(anndata_breast,hotspot_variable,signature,fig_size=(3,3),file_save=None):
+def plot_signature_boxplot(anndata_breast,hotspot_variable,signature,fig_size=(3,3),save_path="signature_boxplot.pdf"):
     """
     This function plots a boxplot for comparing responses to signatures based on two defined hotspots.
 
@@ -245,7 +247,7 @@ def plot_signature_boxplot(anndata_breast,hotspot_variable,signature,fig_size=(3
     signature (str): The column name in anndata_breast.obs that contains the signature.
     fig_size (tuple): A tuple representing the figure size. Default is (3, 3).
     """
-    spl.plot_signature_boxplot(anndata_breast,hotspot_variable,signature,fig_size,file_save)
+    spl.plot_signature_boxplot(anndata_breast,hotspot_variable,signature,fig_size,save_path)
 
 
 ############################################################# hotspot sensitivity #############################################################################################

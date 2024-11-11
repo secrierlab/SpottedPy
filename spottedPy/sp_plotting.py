@@ -171,7 +171,7 @@ def plot_bubble_plot_mean_distances(distances_df, primary_vars, comparison_vars,
 
 
 
-def plot_custom_scatter(data, primary_vars, comparison_vars, fig_size, bubble_size, file_save,sort_by_difference, compare_distribution_metric, statistical_test):
+def plot_custom_scatter(data, primary_vars, comparison_vars, fig_size, bubble_size,sort_by_difference, compare_distribution_metric, statistical_test,save_path):
     # Set plot style and font
     sns.set_style("white")
     plt.rcParams['font.family'] = 'Arial'
@@ -356,27 +356,46 @@ def plot_custom_scatter(data, primary_vars, comparison_vars, fig_size, bubble_si
     plt.legend(handles=legend_elements, loc='lower right')
     sns.despine()
     # Save the plot
-    if file_save: 
-        plt.savefig(f"{file_save}_scatterplot_hallmarks.pdf", dpi=300,bbox_inches='tight')
+    if save_path is not None:
+        plt.savefig(save_path, dpi=300,bbox_inches='tight') 
     plt.show()
     if statistical_test:
         return results_df
     
-def plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size):
+def plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size=(3,3),save_path="barplot.pdf"):
     #filter distances by primary_variable and comparison_variable
     filtered_df = distances[
         distances['primary_variable'].isin(primary_variables) &
         distances['comparison_variable'].isin(comparison_variables)
     ]
-    
-    #plot boxplot of min_distance
-    for comparison_variable in comparison_variables:
-        fig, ax = plt.subplots(figsize=fig_size)
-        sns.boxplot(data=filtered_df[filtered_df['comparison_variable'] == comparison_variable],
+    #if hotspot_number is a column in distances
+    if 'hotspot_number' in filtered_df.columns:
+        for comparison_variable in comparison_variables:
+            fig, ax = plt.subplots(figsize=fig_size)
+            #filter for comparison_variable
+            distance_vals_filtered=filtered_df[filtered_df['comparison_variable'] == comparison_variable]
+            distance_vals_filtered=distance_vals_filtered.groupby(['batch','primary_variable', 'hotspot_number']).min_distance.median().reset_index()
+            t_stat, p_val = ttest_ind(distance_vals_filtered[distance_vals_filtered['primary_variable'] == primary_variables[0]]['min_distance'], 
+                                      distance_vals_filtered[distance_vals_filtered['primary_variable'] == primary_variables[1]]['min_distance'])
+            sns.boxplot(data=distance_vals_filtered,
                     x='primary_variable', y='min_distance', ax=ax,palette='viridis')
-        ax.set_title(comparison_variable)
-        ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
-        plt.show()
+            ax.set_title(comparison_variable + " p-value: {:.3}".format(p_val))
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
+            plt.savefig(save_path)
+            plt.show()
+
+    else:
+        #plot boxplot of min_distance
+        for comparison_variable in comparison_variables:
+            fig, ax = plt.subplots(figsize=fig_size)
+            sns.boxplot(data=filtered_df[filtered_df['comparison_variable'] == comparison_variable],
+                        x='primary_variable', y='min_distance', ax=ax,palette='viridis')
+            ax.set_title(comparison_variable)
+            ax.set_xticklabels(ax.get_xticklabels(), rotation=90)
+            plt.savefig(save_path)
+            plt.show()
+
+
 
 # Create a DataFrame for heatmap with states as rows and signatures as columns; helper function
 def create_heatmap_data(mean_scores, states_to_loop_through, signatures):
@@ -490,25 +509,66 @@ def calculate_signature_differences(anndata_breast, gene_signatures, states):
         }) 
     return pd.DataFrame(results)
 
-def plot_signature_boxplot(anndata_breast,hotspot_variable,signature,fig_size,file_save):
-    hot_data = anndata_breast.obs[~anndata_breast.obs[hotspot_variable[0]].isna()][signature]
-    cold_data = anndata_breast.obs[~anndata_breast.obs[hotspot_variable[1]].isna()][signature]
-    # Plotting
-    data = pd.DataFrame({
-    hotspot_variable[0]: hot_data,
-    hotspot_variable[1]: cold_data
-    })
+def plot_signature_boxplot(anndata_breast, hotspot_variable, signature, fig_size=(5, 5), save_path=None):
+    # Check if 'hotspot_number' exists in the `obs` data
+    #create a list of hotspot_variables with the number appended
+    hotspot_variable_number = []
+    for hotspot in hotspot_variable:
+        hotspot_variable_number.append(hotspot + "_number")
 
-    # Melting the DataFrame to long format for seaborn
-    data_melted = data.melt(var_name='Hotspot', value_name='Response to Checkpoint Score')
-    # Plotting
-    plt.figure(figsize=fig_size)
-    sns.boxplot(x='Hotspot', y='Response to Checkpoint Score', data=data_melted, showfliers=False)
-    plt.title('Response to Checkpoint Genes based on EMT Hallmarks')
-    plt.ylabel('Response to Checkpoint Score')
-    if file_save: 
-        plt.savefig(f"{file_save}_overall_comparison.pdf", dpi=300)
-    plt.show()
+    if hotspot_variable_number[0] in anndata_breast.obs.columns:
+        print("Averaging signature score per hotspot")
+        # Filter for the specific hotspots and compute the mean signature per hotspot number
+        hot_data = anndata_breast.obs[~anndata_breast.obs[hotspot_variable[0]].isna()]
+        cold_data = anndata_breast.obs[~anndata_breast.obs[hotspot_variable[1]].isna()]
+
+        # Group by 'hotspot_number' and calculate the mean signature
+        hot_data_grouped = hot_data.groupby(hotspot_variable_number[0])[signature].mean().reset_index()
+        cold_data_grouped = cold_data.groupby(hotspot_variable_number[1])[signature].mean().reset_index()
+
+        #calculate p value
+        p_value = ttest_ind(hot_data_grouped[signature], cold_data_grouped[signature])[1]
+
+
+        # Add a column to indicate the group
+        hot_data_grouped['Hotspot'] = hotspot_variable[0]
+        cold_data_grouped['Hotspot'] = hotspot_variable[1]
+
+        # Combine data
+        combined_data = pd.concat([hot_data_grouped, cold_data_grouped], ignore_index=True)
+
+        # Plotting
+        plt.figure(figsize=fig_size)
+        sns.boxplot(x='Hotspot', y=signature, data=combined_data, showfliers=False)
+        plt.title(f'{signature} Mean per Hotspot Number (p-value: {p_value:.2f})')
+        plt.ylabel('Mean Response Score')
+        if save_path:
+            plt.savefig(save_path, dpi=300)
+        plt.show()
+
+    else:
+        # Fallback to original logic if 'hotspot_number' does not exist
+        hot_data = anndata_breast.obs[~anndata_breast.obs[hotspot_variable[0]].isna()][signature]
+        cold_data = anndata_breast.obs[~anndata_breast.obs[hotspot_variable[1]].isna()][signature]
+
+        # Combine data
+        data = pd.DataFrame({
+            hotspot_variable[0]: hot_data,
+            hotspot_variable[1]: cold_data
+        })
+
+        # Melt the DataFrame to long format for seaborn
+        data_melted = data.melt(var_name='Hotspot', value_name='Response to Checkpoint Score')
+
+        # Plotting
+        plt.figure(figsize=fig_size)
+        sns.boxplot(x='Hotspot', y='Response to Checkpoint Score', data=data_melted, showfliers=False)
+        plt.title(f'Response to Checkpoint Genes based on {signature}')
+        plt.ylabel('Response to Checkpoint Score')
+        if save_path:
+            plt.savefig(save_path, dpi=300)
+        plt.show()
+
 
 #helper function
 def plot_bubble_chart(data, states, fig_size, bubble_size):

@@ -10,6 +10,10 @@ import libpysal
 import scanpy as sc
 from statsmodels.stats.multitest import multipletests as fdr
 from scipy.spatial import distance_matrix
+import warnings
+from anndata import ImplicitModificationWarning
+warnings.filterwarnings('ignore', category=UserWarning, module='libpysal')
+warnings.simplefilter('ignore', category=ImplicitModificationWarning)
 
 def find_connected_components(
     hotspot: pd.DataFrame,
@@ -149,6 +153,7 @@ def calculate_hotspots_with_hotspots_numbered(
         return anndata_filtered
     
 def create_hotspots(anndata, column_name, filter_columns, filter_value, neighbours_parameters, p_value, number_components_return, relative_to_batch, number_hotspots, permutation, seed_number):
+    
     anndata=anndata.copy()
     if filter_columns is not None:
         anndata_filtered = anndata[anndata.obs[filter_columns] == filter_value]
