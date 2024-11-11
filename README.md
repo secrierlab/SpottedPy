@@ -13,6 +13,9 @@ SpottedPy is a Python package for analysing signatures in spatial transcriptomic
 
 •    Our study analyses relationships using varied spatial scales, ranging from neighbourhood enrichment to hotspots. This variety allows for a deeper understanding of the scale at which these spatial relationships manifest.
 
+•    SpottedPy can be used on any spatial transcriptomic data in an anndata format e.g. Visium, Xenium
+
+
 
 ## Getting Started
 
@@ -26,9 +29,10 @@ To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tu
 
 Key functions are in spottedpy.py, which calls functions from the other python files: 
 
-•    _sp.create_hotspots_ creates hotspots from anndata, specify in the filter_columns parameter what region within the spatial slide to calculate the hotspot from e.g. tumour cells. The neighourhood_parameter can be altered here (default=8). _relative_to_batch_ parameter ensures hotspots are calculated across each slide, otherwise they are calculated across multiple slides. Importantly, if multiple slides are used (highly recommended for statistical power), these should be labelled using .obs[‘batch’] within the anndata object. Additionally, the library ID in the .uns data slot should be labelled with the .obs[‘batch’] value. 
+•    _sp.create_hotspots_ creates hotspots from anndata, specify in the filter_columns parameter what region within the spatial slide to calculate the hotspot from e.g. tumour cells. The neighourhood_parameter can be altered here (default=10). _relative_to_batch_ parameter ensures hotspots are calculated across each slide, otherwise they are calculated across multiple slides. Importantly, if multiple slides are used (highly recommended for statistical power), these should be labelled using .obs[‘batch’] within the anndata object. Additionally, the library ID in the .uns data slot should be labelled with the .obs[‘batch’] value. Importantly, the signature should be scaled to be between 0 and 1 (e.g. using MinMaxScaler as used in the tutorial).
 
-We encourage the user to choose the neighbourhood parameter most relevant for their biological question, e.g. interested in local interactions of the signature, or more broader tissue modules. SpottedPy allows the user to perform the sensitivity analysis to observe this affects downstream analysis. We would recommend for Visium starting with parameter (k=8) as this captures all the spots surrounding the central spot. The variables with the most stable relationships across a range of parameters (and therefore scales) is likely one of most interest for further investigation. 
+
+We encourage the user to choose the neighbourhood parameter most relevant for their biological question, e.g. interested in local interactions of the signature, or more broader tissue modules. SpottedPy allows the user to perform the sensitivity analysis to observe this affects downstream analysis. We would recommend for Visium starting with neighbourhood parameter between 8 and 10 as this captures all the spots surrounding the central spot. The variables with the most stable relationships across a range of parameters (and therefore scales) is likely one of most interest for further investigation. 
 
 •   _sp.plot_hotspots_ plots hotspots.
 
