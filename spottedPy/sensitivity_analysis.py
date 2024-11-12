@@ -1,4 +1,4 @@
-import spottedpy as sp
+from .main import create_hotspots, calculateDistances
 import sp_plotting as spl
 import pandas as pd
 import numpy as np
@@ -8,7 +8,7 @@ import scanpy as sc
 
 def process_hotspots(adata, variable_name, parameter_size, sensitivity_parameter):
     if sensitivity_parameter=="pvalue":
-        adata_hotspots = sp.create_hotspots(
+        adata_hotspots = create_hotspots(
             adata, column_name=variable_name,
             neighbours_parameters=10,
             p_value=parameter_size,
@@ -17,7 +17,7 @@ def process_hotspots(adata, variable_name, parameter_size, sensitivity_parameter
         )
     
     if sensitivity_parameter=="neighbourhood":
-        adata_hotspots = sp.create_hotspots(
+        adata_hotspots = create_hotspots(
             adata, column_name=variable_name,
             neighbours_parameters=parameter_size,
             p_value=0.05,
@@ -28,7 +28,7 @@ def process_hotspots(adata, variable_name, parameter_size, sensitivity_parameter
 
 #helper function
 def calculate_distances(adata_hotspots, variables):
-    return sp.calculateDistances(adata_hotspots, variables,hotspot_number=True)
+    return calculateDistances(adata_hotspots, variables,hotspot_number=True)
 
 #helper function
 def process_batches(spatial_anndata_obj, params):

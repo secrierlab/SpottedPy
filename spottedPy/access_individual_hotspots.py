@@ -3,7 +3,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import squidpy as sq
-import sp_plotting as spl
+from . import sp_plotting as spl
 import joypy
 from matplotlib import colors as mcolors
 from anndata import AnnData

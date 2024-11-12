@@ -55,16 +55,14 @@ warnings.filterwarnings("ignore", category=UserWarning, message="Setting element
 plt.rcParams['pdf.fonttype'] = 'truetype'    
 import joypy
 #spotterpy functions
-import hotspot_helper as hotspot_helper
-import sp_plotting as spl
-import sensitivity_analysis as sensitivity_analysis
-import tumour_perimeter as tumour_perimeter
-import neighbourhood_allinone_helper as neighbourhood_allinone_helper
-import neighbourhood_inner_outer_helper as neighbourhood_inner_outer_helper
-import neighbourhood_plotting as neighbourhood_plotting
-import access_individual_hotspots as access_individual_hotspots
+from . import hotspot_helper
+from . import sp_plotting as spl
+from . import tumour_perimeter
+from . import neighbourhood_allinone_helper
+from . import neighbourhood_inner_outer_helper
 
-
+from . import neighbourhood_plotting
+from . import access_individual_hotspots
 
 ######################################################################################## key hotspot functionality ################################################################################################################################################################################
 
@@ -183,7 +181,7 @@ def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_
 
 
 #for each comparison variable plot box plots of the distribution of min_distance for each primary variable
-def plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size,save_path):
+def plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size,save_path=None):
     spl.plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size,save_path)
 
 ######################################################################################## hotspot heatmaps #######################################################################################################################################
@@ -274,6 +272,7 @@ def sensitivity_calcs(spatial_anndata, params):
     - results (dict): A dictionary containing the calculated distances.
 
     """
+    from . import sensitivity_analysis
     sensitivity_analysis.sensitivity_calcs(spatial_anndata, params)
 
 def process_tumor_perimeter(adata):

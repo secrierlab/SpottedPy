@@ -3,7 +3,7 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 import squidpy as sq
-import sp_plotting as spl
+from . import sp_plotting as spl
 
 def correlation_heatmap_neighbourhood(results, variables, save_path=None, pval_cutoff=0.05,fig_size=(5, 5)):
     """
