@@ -19,12 +19,26 @@ SpottedPy is a Python package for analysing signatures in spatial transcriptomic
 
 ## Getting Started
 
-SpottedPy was created using Python 3.9.
+SpottedPy was created using Python 3.9. Recommended to use with python 3.9 or 3.10. 
 
 ```bash
-# Clone the repository
-git clone https://github.com/secrierlab/SpottedPy.git 
+#install the required packages
+pip install scanpy --upgrade
+pip install -U libpysal
+pip install esda
+pip install joypy
+pip install spottedpy 
+```
 
+Through conda: 
+```bash
+conda create -n [env_name] python==3.10
+conda activate [env_name]
+pip install scanpy --upgrade
+pip install -U libpysal
+pip install esda
+pip install joypy
+pip install spottedpy
 ```
 To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tutorial walks through using SpottedPy with multiple spatial slides, highly recommended for downstream statistical analysis). If only one slide is available, follow spottedpy_tutorial_sample_dataset.ipynb tutorial (not recommended for statistical downstream test, but allows for visualisation of hotspots). 
 
