@@ -5,7 +5,7 @@
 
 SpottedPy is a Python package for analysing signatures in spatial transcriptomic datasets a varying scales using hotspot (spatial cluster) analysis and neighbourhood enrichment.
 
-•    Our method offers a flexible approach for analysing continuous gene signatures, allowing users to selectively examine specific areas, such as tumour spots, and identify statistically significant areas with a high score for the signature ('hotspot') and low score for the signature ('coldspot') for further downstream analysis.
+•    Our method offers a flexible approach for analysing **continuous** gene signatures, allowing users to selectively examine specific areas, such as tumour spots, and identify statistically significant areas with a high score for the signature ('hotspot') and low score for the signature ('coldspot') for further downstream analysis.
 
 •    The downstream analysis encompasses techniques for statistical comparison of hotspot distances, investigation of other signature enrichments within these hotspots, and a comparison of these distances with other relevant areas, like the tumour perimeter.
 
