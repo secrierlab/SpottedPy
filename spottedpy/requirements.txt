@@ -1,0 +1,15 @@
+anndata==0.8
+esda==2.5.1
+joypy==0.2.6
+libpysal==4.8.1
+matplotlib==3.8.2
+numpy==1.24.4
+pandas==2.0.3
+scanpy==1.10.3
+scikit_learn==1.4.0
+scipy==1.10.1
+seaborn==0.13
+setuptools==75.1.0
+squidpy==1.2.3
+statsmodels==0.14.2
+tqdm==4.66.4

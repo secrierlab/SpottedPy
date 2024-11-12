@@ -1,0 +1,10 @@
+numpy==1.23.4
+pandas==2.2.2
+scipy==1.13.0
+matplotlib==3.8.4
+seaborn==0.13.2
+tqdm==4.66.5
+anndata==0.10.8
+scanpy==1.10.1
+session_info==1.0.0
+squidpy==1.4.1
