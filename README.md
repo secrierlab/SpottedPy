@@ -3,7 +3,7 @@
 
 ### Author: Eloise Withnell, UCL Genetics Institute
 
-Paper now published link at [Genome Biology](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-024-03428-y)
+Paper now published at [Genome Biology](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-024-03428-y)
 
 SpottedPy is a Python package for analysing signatures in spatial transcriptomic datasets a varying scales using hotspot (spatial cluster) analysis and neighbourhood enrichment.
 
