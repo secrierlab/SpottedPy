@@ -30,15 +30,11 @@ pip install joypy
 pip install spottedpy 
 ```
 
-Through conda: 
+Recommended to create an environment through conda before installation: 
 ```bash
 conda create -n [env_name] python==3.10
 conda activate [env_name]
-pip install scanpy --upgrade
-pip install -U libpysal
-pip install esda
-pip install joypy
-pip install spottedpy
+
 ```
 
 pip install distutils-pytest may be required before installation depending on the system
