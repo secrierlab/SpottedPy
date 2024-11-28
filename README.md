@@ -68,11 +68,6 @@ and _comparison_variables_ are the hotspots we calculate distances to.
 
 •    _sp.correlation_heatmap_neighbourhood_ and _sp.plot_overall_change_ plot the neighbourhood results.
 
-
-### Package pre-requisites
-
-Download scanpy, libpysal, esda, joypy
-
 ### Data
 
 Download sample breast cancer spatial transcriptomics data at this [Zenodo repository](https://zenodo.org/records/13284570) for the spottedpy_multiple_slides tutorial (recommended).  [Zenodo repository](https://doi.org/10.5281/zenodo.10392317) contains anndata object for spottedpy_tutorial_sample_dataset.ipynb tutorial. 
