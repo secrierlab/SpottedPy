@@ -24,11 +24,6 @@ SpottedPy is a Python package for analysing signatures in spatial transcriptomic
 SpottedPy was created using Python 3.9. Recommended to use with python 3.9 or 3.10.  
 
 ```bash
-#install the required packages
-pip install scanpy --upgrade
-pip install -U libpysal
-pip install esda
-pip install joypy
 pip install spottedpy 
 ```
 
