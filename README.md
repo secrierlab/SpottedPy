@@ -3,6 +3,8 @@
 
 ### Author: Eloise Withnell, UCL Genetics Institute
 
+Paper now published at [Genome Biology](https://genomebiology.biomedcentral.com/articles/10.1186/s13059-024-03428-y)
+
 SpottedPy is a Python package for analysing signatures in spatial transcriptomic datasets a varying scales using hotspot (spatial cluster) analysis and neighbourhood enrichment.
 
 •    Our method offers a flexible approach for analysing **continuous** gene signatures, allowing users to selectively examine specific areas, such as tumour spots, and identify statistically significant areas with a high score for the signature ('hotspot') and low score for the signature ('coldspot') for further downstream analysis.
@@ -22,30 +24,21 @@ SpottedPy is a Python package for analysing signatures in spatial transcriptomic
 SpottedPy was created using Python 3.9. Recommended to use with python 3.9 or 3.10.  
 
 ```bash
-#install the required packages
-pip install scanpy --upgrade
-pip install -U libpysal
-pip install esda
-pip install joypy
 pip install spottedpy 
 ```
 
-Through conda: 
+Recommended to create an environment through conda before installation: 
 ```bash
 conda create -n [env_name] python==3.10
 conda activate [env_name]
-pip install scanpy --upgrade
-pip install -U libpysal
-pip install esda
-pip install joypy
-pip install spottedpy
+
 ```
 
 pip install distutils-pytest may be required before installation depending on the system
 
 To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tutorial walks through using SpottedPy with multiple spatial slides, highly recommended for downstream statistical analysis). If only one slide is available, follow spottedpy_tutorial_sample_dataset.ipynb tutorial (not recommended for statistical downstream test, but allows for visualisation of hotspots). 
 
-Key functions are in spottedpy.py, which calls functions from the other python files: 
+Key functions are in main.py, which calls functions from the other python files: 
 
 •    _sp.create_hotspots_ creates hotspots from anndata, specify in the filter_columns parameter what region within the spatial slide to calculate the hotspot from e.g. tumour cells. The neighourhood_parameter can be altered here (default=10). _relative_to_batch_ parameter ensures hotspots are calculated across each slide, otherwise they are calculated across multiple slides. Importantly, if multiple slides are used (highly recommended for statistical power), these should be labelled using .obs[‘batch’] within the anndata object. Additionally, the library ID in the .uns data slot should be labelled with the .obs[‘batch’] value. Importantly, the signature should be scaled to be between 0 and 1 (e.g. using MinMaxScaler as used in the tutorial).
 
@@ -74,11 +67,6 @@ and _comparison_variables_ are the hotspots we calculate distances to.
 •    _sp.calculate_neighbourhood_correlation_ function correlates phenotypes with cells within a spot/spatial unit. rings_range sets the number of rings.
 
 •    _sp.correlation_heatmap_neighbourhood_ and _sp.plot_overall_change_ plot the neighbourhood results.
-
-
-### Package pre-requisites
-
-Download scanpy, libpysal, esda, joypy
 
 ### Data
 
