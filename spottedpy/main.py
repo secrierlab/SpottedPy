@@ -181,7 +181,7 @@ def plot_custom_scatter(data: pd.DataFrame, primary_vars: List[str], comparison_
 
 
 #for each comparison variable plot box plots of the distribution of min_distance for each primary variable
-def plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size,save_path=None):
+def plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size: tuple = (3, 3),save_path=None):
     spl.plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size,save_path)
 
 ######################################################################################## hotspot heatmaps #######################################################################################################################################

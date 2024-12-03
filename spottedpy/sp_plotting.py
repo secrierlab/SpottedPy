@@ -50,6 +50,7 @@ from typing import Tuple, List, Optional, Union
 from statsmodels.sandbox.stats.multicomp import multipletests
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning, module='libpysal')
+warnings.simplefilter(action='ignore', category=FutureWarning)
 
 #pdf font
 plt.rcParams['pdf.fonttype'] = 'truetype' 
@@ -362,7 +363,7 @@ def plot_custom_scatter(data, primary_vars, comparison_vars, fig_size, bubble_si
     if statistical_test:
         return results_df
     
-def plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size=(3,3),save_path="barplot.pdf"):
+def plot_bar_plot_distance(distances,primary_variables,comparison_variables,fig_size,save_path):
     #filter distances by primary_variable and comparison_variable
     filtered_df = distances[
         distances['primary_variable'].isin(primary_variables) &
