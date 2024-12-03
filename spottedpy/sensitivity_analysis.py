@@ -1,5 +1,5 @@
 from .main import create_hotspots, calculateDistances
-import sp_plotting as spl
+from . import sp_plotting as spl
 import pandas as pd
 import numpy as np
 import scanpy as sc
