@@ -27,14 +27,16 @@ SpottedPy was created using Python 3.9. Recommended to use with python 3.9 or 3.
 pip install spottedpy 
 ```
 
-Recommended to create an environment through conda before installation: 
+Recommended to create an environment through conda before installation to avoid conflicts: 
 ```bash
 conda create -n [env_name] python==3.10
 conda activate [env_name]
 
 ```
 
-pip install distutils-pytest may be required before installation depending on the system
+pip install distutils-pytest may be required before installation depending on the system. 
+
+Alternatively, clone the repository.
 
 To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tutorial walks through using SpottedPy with multiple spatial slides, highly recommended for downstream statistical analysis). If only one slide is available, follow spottedpy_tutorial_sample_dataset.ipynb tutorial (not recommended for statistical downstream test, but allows for visualisation of hotspots). 
 
