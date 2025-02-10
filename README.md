@@ -36,7 +36,22 @@ conda activate [env_name]
 
 pip install distutils-pytest may be required before installation depending on the system. 
 
-Alternatively, clone the repository.
+Alternatively, clone the repository and recommended to run with the following packages and versions:
+```bash
+numpy==1.23.4,
+pandas==2.2.2,
+scipy==1.13.0,
+matplotlib==3.8.4,
+seaborn==0.13.2,
+tqdm==4.66.5,
+anndata==0.10.8,
+scanpy==1.10.1,
+session_info==1.0.0,
+squidpy==1.4.1,
+libpysal,
+esda,  
+joypy  
+```
 
 To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tutorial walks through using SpottedPy with multiple spatial slides, highly recommended for downstream statistical analysis). If only one slide is available, follow spottedpy_tutorial_sample_dataset.ipynb tutorial (not recommended for statistical downstream test, but allows for visualisation of hotspots). 
 
