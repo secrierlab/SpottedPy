@@ -53,7 +53,7 @@ esda,
 joypy  
 ```
 
-To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tutorial walks through using SpottedPy with multiple spatial slides, highly recommended for downstream statistical analysis). If only one slide is available, follow spottedpy_tutorial_sample_dataset.ipynb tutorial (not recommended for statistical downstream test, but allows for visualisation of hotspots). 
+To use SpottedPy follow instructions in spottedPy_multiple_slides.ipynb (this tutorial walks through using SpottedPy with multiple spatial slides, highly recommended for downstream statistical analysis). If only one slide is available, follow spottedpy_tutorial_sample_dataset.ipynb tutorial (not recommended for statistical downstream test, but allows for visualisation of hotspots). NOTE: SpottedPy requires that the anndata object has continuous signatures or cell type propertions to work from. Use scanpy.tl.score_genes with your gene list of interest to get a column with gene scores with your signature of interest.
 
 Key functions are in main.py, which calls functions from the other python files: 
 
